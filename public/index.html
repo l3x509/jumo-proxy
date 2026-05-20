@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JUMO — Digital Twin Research System</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Playfair+Display:wght@600;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body { font-family: "DM Sans", system-ui, sans-serif; background: #05090F; color: #E2E8F0; font-size: 13px; display: flex; flex-direction: column; }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-thumb { background: #1E3A5F; border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: #2D5F8A; }
+
+  textarea, input, button { font-family: inherit; }
+  textarea { resize: none; }
+  textarea:focus, input:focus, button:focus { outline: none; }
+
+  @keyframes fadeIn { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes bounce { 0%,60%,100% { transform:translateY(0); opacity:.35; } 30% { transform:translateY(-4px); opacity:1; } }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+
+  .dot { animation: bounce 1.2s infinite; display:inline-block; }
+  .dot:nth-child(2) { animation-delay:.2s; }
+  .dot:nth-child(3) { animation-delay:.4s; }
+  .anim { animation: fadeIn .25s ease; }
+
+  /* Buttons */
+  .btn { background:#0A1628; border:1px solid #1E3A5F; border-radius:6px; color:#94A3B8; padding:5px 12px; cursor:pointer; font-size:11.5px; font-weight:500; transition:all .15s; white-space:nowrap; }
+  .btn:hover { background:#0F2040; color:#CBD5E1; border-color:#2D5F8A; }
+  .btn:disabled { opacity:.4; cursor:not-allowed; }
+  .btn-primary { background:#1E3A5F; border-color:#2D5F8A; color:#E2E8F0; }
+  .btn-primary:hover { background:#2D5F8A; }
+
+  .q-btn { background:#070D18; border:1px solid #0F2040; border-radius:7px; padding:9px 11px; font-size:11.5px; color:#64748B; cursor:pointer; text-align:left; transition:all .15s; width:100%; line-height:1.45; display:block; }
+  .q-btn:hover { background:#0C1A30; border-color:#1E3A5F; color:#94A3B8; }
+
+  .tag { font-size:9.5px; padding:2px 7px; border-radius:999px; font-weight:500; }
+  .lbl { font-size:9.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:#3A5A70; }
+
+  /* Layout */
+  #hdr { height:48px; min-height:48px; border-bottom:1px solid #0F2040; display:flex; align-items:center; padding:0 14px; gap:10px; background:#05090F; z-index:20; flex-shrink:0; }
+  #body { flex:1; display:flex; overflow:hidden; }
+
+  /* Hamburger — desktop hidden */
+  #hamburger { display:none; background:transparent; border:1px solid #0F2040; border-radius:6px; color:#94A3B8; padding:6px 8px; cursor:pointer; font-size:16px; line-height:1; flex-shrink:0; }
+
+  /* Sidebar backdrop */
+  #sidebar-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:29; }
+
+  /* Left column */
+  #left { width:218px; min-width:218px; border-right:1px solid #0F2040; background:#040710; display:flex; flex-direction:column; overflow:hidden; flex-shrink:0; transition:transform .25s ease; z-index:30; }
+  #left-hdr { padding:10px 12px; border-bottom:1px solid #0F2040; display:flex; align-items:center; gap:6px; flex-shrink:0; }
+  #left-list { overflow-y:auto; flex:1; padding:6px; }
+
+  /* Persona items */
+  .p-item { display:flex; align-items:center; gap:9px; padding:7px 8px; border-radius:8px; cursor:pointer; transition:all .15s; border:1px solid transparent; margin-bottom:2px; }
+  .p-item:hover { background:#0A1628; border-color:#0F2040; }
+  .p-item.active { background:#0A1628; border-color:var(--c, #1E3A5F); }
+  .p-avatar { width:32px; height:32px; min-width:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:9.5px; font-weight:700; flex-shrink:0; }
+  .p-name { font-size:11.5px; font-weight:600; color:#CBD5E1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .p-arch { font-size:10px; font-style:italic; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  /* Right content */
+  #right { flex:1; overflow:hidden; display:flex; flex-direction:column; min-width:0; }
+
+  /* Empty state */
+  #empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; }
+
+  /* Profile panel */
+  #profile-panel { display:none; overflow-y:auto; flex:1; }
+  #profile-inner { padding:20px; display:flex; flex-direction:column; gap:14px; max-width:720px; }
+
+  /* Chat panel */
+  #chat-panel { display:none; flex-direction:column; flex:1; overflow:hidden; }
+  #chat-hdr { padding:10px 14px; border-bottom:1px solid #0F2040; display:flex; align-items:center; gap:10px; flex-shrink:0; min-height:56px; }
+  #chat-bio { font-size:11.5px; color:#3A5A70; line-height:1.6; padding:8px 14px; border-bottom:1px solid #0F2040; border-left-width:3px; border-left-style:solid; flex-shrink:0; background:#040710; }
+  #messages { flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:12px; }
+  .msg-bubble-wrap { max-width:72%; }
+  #chat-qs { display:none; border-top:1px solid #0F2040; padding:8px 12px; background:#040710; flex-shrink:0; }
+  #chat-qs-inner { display:flex; flex-direction:column; gap:4px; }
+  #input-wrap { padding:10px 14px; border-top:1px solid #0F2040; display:flex; gap:8px; align-items:flex-end; flex-shrink:0; }
+  #chat-input { flex:1; background:#070D18; border:1px solid #1E3A5F; border-radius:8px; color:#E2E8F0; padding:9px 12px; font-size:13px; line-height:1.5; max-height:120px; overflow-y:auto; }
+  #chat-input::placeholder { color:#2A3A50; }
+  #send-btn { width:38px; height:38px; min-width:38px; border-radius:8px; border:none; background:#1E3A5F; color:white; cursor:pointer; font-size:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:opacity .15s; }
+  #send-btn:hover { opacity:.85; }
+
+  /* Broadcast panel */
+  #bc-panel { display:none; overflow-y:auto; flex:1; }
+  #bc-inner { padding:20px; max-width:960px; }
+  #bc-results { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:18px; }
+  .bc-card { background:#070D18; border:1px solid #0F2040; border-radius:10px; padding:14px; }
+
+  /* Log panel */
+  #log-panel { display:none; flex:1; flex-direction:column; overflow:hidden; }
+  #log-topbar { height:44px; min-height:44px; border-bottom:1px solid #0F2040; padding:0 14px; display:flex; align-items:center; gap:8px; flex-shrink:0; }
+  #log-body { flex:1; display:flex; overflow:hidden; }
+  #log-list-col { width:220px; min-width:220px; border-right:1px solid #0F2040; overflow-y:auto; padding:6px; }
+  #log-detail-col { flex:1; overflow-y:auto; padding:16px; }
+  .log-item { padding:8px 10px; border-radius:7px; cursor:pointer; border:1px solid transparent; margin-bottom:2px; }
+  .log-item:hover { background:#0A1628; }
+  .log-item.active { background:#0A1628; border-color:#1E3A5F; }
+
+  /* Access token — header (desktop) */
+  #hdr-api-wrap { display:flex; align-items:center; gap:5px; }
+  #hdr-api-input { background:#070D18; border:1px solid #0F2040; border-radius:6px; color:#64748B; padding:5px 10px; font-size:11px; width:190px; }
+  #hdr-api-input:focus { border-color:#1E3A5F; color:#94A3B8; }
+  #hdr-api-input::placeholder { color:#1E3A5F; }
+
+  /* Access token — sidebar (mobile) */
+  #sidebar-api-wrap { display:none; padding:8px 10px; border-bottom:1px solid #0F2040; }
+  #sidebar-api-input { width:100%; background:#070D18; border:1px solid #0F2040; border-radius:6px; color:#64748B; padding:6px 10px; font-size:12px; }
+  #sidebar-api-input::placeholder { color:#1E3A5F; }
+
+  /* ── Mobile ≤768px ── */
+  @media (max-width: 768px) {
+    #left { position:fixed; top:48px; left:0; bottom:0; transform:translateX(-100%); }
+    #left.open { transform:translateX(0); }
+    #sidebar-close { display:block !important; }
+    #messages .msg-bubble-wrap { max-width:92% !important; }
+    #chat-qs { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    #chat-qs-inner { flex-wrap:nowrap; }
+    #chat-qs-inner .q-btn { white-space:nowrap; min-width:160px; }
+    #input-wrap { padding:8px 10px; }
+    #chat-input { font-size:15px; }
+    #send-btn { width:42px; height:42px; min-width:42px; }
+    #bc-results { grid-template-columns:1fr; }
+    #bc-inner { padding:12px; }
+    #profile-inner { padding:12px; gap:10px; }
+    #log-body { flex-direction:column; }
+    #log-list-col { width:100%; min-width:unset; border-right:none; border-bottom:1px solid #0F2040; max-height:190px; }
+    #log-detail-col { padding:12px; }
+    #log-topbar .btn { font-size:10px; padding:4px 7px; }
+    .btn { min-height:32px; }
+  }
+
+  /* ── Very small ≤400px ── */
+  @media (max-width: 400px) {
+    #hdr { gap:6px; padding:0 8px; }
+    .brand-txt { display:none; }
+    #messages { padding:10px; gap:10px; }
+    #bc-inner { padding:8px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR BACKDROP -->
+<div id="sidebar-backdrop" onclick="closeSidebar()"></div>
+
+<!-- HEADER -->
+<div id="hdr">
+  <button id="hamburger" onclick="toggleSidebar()" aria-label="Menu">&#9776;</button>
+  <div style="width:28px;height:28px;background:linear-gradient(135deg,#D4A017,#C0392B);border-radius:7px;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:800;font-size:11px;color:white;flex-shrink:0">J</div>
+  <span class="brand-txt" style="font-family:'Playfair Display',serif;font-weight:700;font-size:15px">JUMO</span>
+  <span class="brand-txt" style="font-size:10px;color:#3A5A70;padding:2px 8px;border:1px solid #0F2040;border-radius:4px;letter-spacing:.06em;text-transform:uppercase;font-weight:500">v1.5</span>
+  <div style="flex:1"></div>
+  <button class="btn" id="log-btn" onclick="showLog()">&#x2393; Log <span id="log-count-badge" style="display:none;background:#1E3A5F;color:#94A3B8;border-radius:99px;padding:1px 6px;font-size:10px;margin-left:3px">0</span></button>
+  <button class="btn" id="bc-btn" onclick="showBroadcast()">&#x2295; Broadcast</button>
+  <button class="btn" id="back-btn" onclick="goBack()" style="display:none">&#8592; Back</button>
+  <div id="hdr-api-wrap">
+    <span style="font-size:10px;color:#2A3A50;flex-shrink:0">Token</span>
+    <input id="hdr-api-input" type="password" placeholder="access token…" autocomplete="off" spellcheck="false">
+  </div>
+  <div id="hdr-status" style="display:flex;align-items:center;gap:6px;padding-left:8px;border-left:1px solid #0F2040">
+    <div style="width:6px;height:6px;border-radius:50%;background:#22C55E;box-shadow:0 0 6px #22C55E;animation:pulse 2s infinite"></div>
+    <span style="font-size:11px;color:#3A5A70">10</span>
+  </div>
+</div>
+
+<!-- BODY -->
+<div id="body">
+
+  <!-- LEFT: persona list -->
+  <div id="left">
+    <div id="left-hdr">
+      <div class="lbl" style="flex:1;margin-bottom:0">Personas</div>
+      <div style="font-size:10px;color:#2A3A50">10</div>
+      <button id="sidebar-close" onclick="closeSidebar()" style="display:none;background:transparent;border:none;color:#64748B;font-size:18px;cursor:pointer;line-height:1;padding:2px 0 2px 6px;">&#x2715;</button>
+    </div>
+    <!-- Mobile API key -->
+    <div id="sidebar-api-wrap">
+      <input id="sidebar-api-input" type="password" placeholder="Access token…" autocomplete="off">
+    </div>
+    <div id="left-list"></div>
+  </div>
+
+  <!-- RIGHT: content panels -->
+  <div id="right">
+
+    <!-- Empty state -->
+    <div id="empty" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
+      <div style="width:56px;height:56px;background:linear-gradient(135deg,#D4A017,#C0392B);border-radius:14px;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:800;font-size:22px;color:white;">J</div>
+      <div style="text-align:center;">
+        <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:18px;color:#4B7A8A;margin-bottom:6px;">JUMO Research System</div>
+        <div style="font-size:12px;color:#2A3A50;line-height:1.7;max-width:280px;">Select a persona to begin.<br>10 culturally calibrated Haitian voices.</div>
+      </div>
+      <div style="font-size:10px;color:#1A2A3A;margin-top:4px;text-align:center;line-height:1.6;max-width:260px;">Enter the access token above<br>before starting a conversation.</div>
+    </div>
+
+    <!-- Profile panel -->
+    <div id="profile-panel" style="display:none;overflow-y:auto;flex:1;">
+      <div id="profile-inner"></div>
+    </div>
+
+    <!-- Chat panel -->
+    <div id="chat-panel" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+      <div id="chat-hdr"></div>
+      <div id="chat-bio"></div>
+      <div id="messages"></div>
+      <div id="chat-qs"><div id="chat-qs-inner"></div></div>
+      <div id="input-wrap">
+        <textarea id="chat-input" rows="1" placeholder="Type your message…"></textarea>
+        <button id="send-btn" onclick="sendMsg()">&#x27A4;</button>
+      </div>
+    </div>
+
+    <!-- Broadcast panel -->
+    <div id="bc-panel" style="display:none;overflow-y:auto;flex:1;">
+      <div id="bc-inner">
+        <div style="margin-bottom:18px;">
+          <div class="lbl" style="margin-bottom:10px;">Broadcast to All 10 Personas</div>
+          <div style="display:flex;gap:8px;align-items:flex-start;">
+            <textarea id="bc-input" rows="2" placeholder="Type a question to ask all 10 personas simultaneously…" style="flex:1;background:#070D18;border:1px solid #1E3A5F;border-radius:8px;color:#E2E8F0;padding:10px 12px;font-size:13px;"></textarea>
+            <button id="bc-send" class="btn btn-primary" onclick="broadcast()" style="padding:10px 16px;">Ask All 10 →</button>
+          </div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <div class="lbl" style="margin-bottom:8px;">Suggested Questions</div>
+          <div id="bc-suggested" style="display:flex;flex-direction:column;gap:5px;max-width:640px;"></div>
+        </div>
+        <div id="bc-results"></div>
+      </div>
+    </div>
+
+    <!-- Log panel -->
+    <div id="log-panel" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+      <div id="log-topbar">
+        <span class="lbl">Session Log</span>
+        <div style="flex:1"></div>
+        <button class="btn" onclick="exportLog()">&#x2913; Export JSON</button>
+        <button class="btn" onclick="clearLog()" style="color:#EF4444;border-color:#3A1A1A;">Clear</button>
+      </div>
+      <div id="log-body">
+        <div id="log-list-col"></div>
+        <div id="log-detail-col"><div style="color:#2A3A50;font-size:11.5px;">Start a conversation to see it here.</div></div>
+      </div>
+    </div>
+
+  </div><!-- /#right -->
+</div><!-- /#body -->
+
+<script src="/personas.js"></script>
+<script>
+/* ═══════════════════════════════════════════════════
+   PERSONAS — Jumo v2.4 | All 10 culturally calibrated
+   ═══════════════════════════════════════════════════ */
+
+/* ═══════════════════════════
+   STATE
+   ═══════════════════════════ */
+var currentPersona = null;
+var messages = [];
+var isLoading = false;
+var isBroadcasting = false;
+var broadcastResults = {};
+var msgTranslations = {};
+var mode = "empty";
+var sessionLog = [];
+var currentSession = null;
+var selectedLogIndex = -1;
+
+/* ═══════════════════════════
+   HELPERS
+   ═══════════════════════════ */
+function esc(str) {
+  return String(str)
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;");
+}
+
+function isMobile() { return window.innerWidth < 768; }
+
+function getApiKey() {
+  var h = document.getElementById("hdr-api-input");
+  var s = document.getElementById("sidebar-api-input");
+  return (h && h.value.trim()) || (s && s.value.trim()) || "";
+}
+
+/* All API calls go through the Railway proxy — never directly to Anthropic */
+var PROXY_URL = "/api/messages";
+
+function apiHeaders() {
+  return {
+    "Content-Type": "application/json",
+    "x-access-token": getApiKey()
+  };
+}
+
+/* ═══════════════════════════
+   RESPONSIVE LAYOUT
+   ═══════════════════════════ */
+function toggleSidebar() {
+  var left = document.getElementById("left");
+  var backdrop = document.getElementById("sidebar-backdrop");
+  if (left.classList.contains("open")) {
+    closeSidebar();
+  } else {
+    left.classList.add("open");
+    backdrop.style.display = "block";
+  }
+}
+
+function closeSidebar() {
+  var left = document.getElementById("left");
+  var backdrop = document.getElementById("sidebar-backdrop");
+  if (left) left.classList.remove("open");
+  if (backdrop) backdrop.style.display = "none";
+}
+
+function applyResponsiveLayout() {
+  var mobile = isMobile();
+  var hamburger = document.getElementById("hamburger");
+  var hdrApiWrap = document.getElementById("hdr-api-wrap");
+  var sidebarApiWrap = document.getElementById("sidebar-api-wrap");
+  var sidebarClose = document.getElementById("sidebar-close");
+  var hdrStatus = document.getElementById("hdr-status");
+  if (hamburger) hamburger.style.display = mobile ? "flex" : "none";
+  if (hdrApiWrap) hdrApiWrap.style.display = mobile ? "none" : "flex";
+  if (sidebarApiWrap) sidebarApiWrap.style.display = mobile ? "block" : "none";
+  if (sidebarClose) sidebarClose.style.display = mobile ? "block" : "none";
+  if (hdrStatus) hdrStatus.style.display = mobile ? "none" : "flex";
+  if (!mobile) closeSidebar();
+}
+
+window.addEventListener("resize", applyResponsiveLayout);
+
+/* ═══════════════════════════
+   INIT
+   ═══════════════════════════ */
+document.addEventListener("DOMContentLoaded", function() {
+  buildPersonaList();
+  buildBroadcastSuggestions();
+  updateLogBadge();
+  applyResponsiveLayout();
+
+  /* Auto-expand textarea */
+  var inp = document.getElementById("chat-input");
+  if (inp) {
+    inp.addEventListener("input", function() {
+      this.style.height = "auto";
+      this.style.height = Math.min(this.scrollHeight, 120) + "px";
+    });
+  }
+});
+
+/* ═══════════════════════════
+   PERSONA LIST
+   ═══════════════════════════ */
+function buildPersonaList() {
+  var list = document.getElementById("left-list");
+  var html = "";
+  for (var i = 0; i < PERSONAS.length; i++) {
+    var p = PERSONAS[i];
+    html += "<div class=\"p-item\" id=\"pi-" + p.id + "\" style=\"--c:" + p.color + "\" onclick=\"selectPersona('" + p.id + "')\">" +
+      "<div class=\"p-avatar\" style=\"background:" + p.dim + ";color:" + p.color + ";border:1px solid " + p.color + "44\">" + p.init + "</div>" +
+      "<div style=\"flex:1;min-width:0\">" +
+        "<div class=\"p-name\">" + esc(p.name.split(" ")[0]) + " " + esc(p.name.split(" ")[1] || "") + "</div>" +
+        "<div class=\"p-arch\" style=\"color:" + p.color + "\">" + esc(p.archetype.split("—")[0].trim()) + "</div>" +
+      "</div>" +
+    "</div>";
+  }
+  list.innerHTML = html;
+}
+
+/* ═══════════════════════════
+   SELECT PERSONA
+   ═══════════════════════════ */
+function selectPersona(id) {
+  var p = PERSONAS.find(function(x){ return x.id === id; });
+  if (!p) return;
+  currentPersona = p;
+  messages = [];
+  setActiveItem(id);
+  showProfile(p);
+  if (isMobile()) closeSidebar();
+}
+
+function setActiveItem(id) {
+  var items = document.querySelectorAll(".p-item");
+  for (var i = 0; i < items.length; i++) items[i].classList.remove("active");
+  var el = document.getElementById("pi-" + id);
+  if (el) el.classList.add("active");
+}
+
+/* ═══════════════════════════
+   PROFILE VIEW
+   ═══════════════════════════ */
+function showProfile(p) {
+  setMode("profile");
+
+  var tagsHtml = "";
+  for (var i = 0; i < p.tags.length; i++) {
+    tagsHtml += "<span class=\"tag\" style=\"background:" + p.dim + ";color:" + p.color + ";border:1px solid " + p.color + "44\">" + esc(p.tags[i]) + "</span>";
+  }
+
+  var qsHtml = "";
+  for (var i = 0; i < p.questions.length; i++) {
+    qsHtml += "<button class=\"q-btn\" onclick=\"startChatQ('" + p.id + "'," + i + ")\">" + esc(p.questions[i]) + "</button>";
+  }
+
+  document.getElementById("profile-inner").innerHTML =
+    "<div style=\"display:flex;align-items:flex-start;gap:14px\" class=\"anim\">" +
+      "<div style=\"width:52px;height:52px;min-width:52px;border-radius:12px;background:" + p.dim + ";display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:" + p.color + ";border:1px solid " + p.color + "66;flex-shrink:0\">" + p.init + "</div>" +
+      "<div style=\"flex:1\">" +
+        "<div style=\"font-size:17px;font-weight:700;color:#E2E8F0;font-family:'Playfair Display',serif;line-height:1.2\">" + esc(p.name) + "</div>" +
+        "<div style=\"font-size:12px;color:" + p.color + ";font-style:italic;margin-top:2px\">" + esc(p.archetype) + "</div>" +
+        "<div style=\"font-size:11px;color:#4B7A8A;margin-top:3px\">" + p.age + " yrs &middot; " + esc(p.location) + "</div>" +
+        "<div style=\"display:flex;gap:4px;flex-wrap:wrap;margin-top:7px\">" + tagsHtml + "</div>" +
+      "</div>" +
+      "<span style=\"font-size:9.5px;font-weight:600;letter-spacing:.06em;color:#F59E0B;background:#78350F44;border:1px solid #78350F88;border-radius:4px;padding:3px 8px;flex-shrink:0;white-space:nowrap\">First Encounter</span>" +
+    "</div>" +
+    "<div style=\"background:#070D18;border:1px solid #0F2040;border-left:3px solid " + p.color + ";border-radius:8px;padding:12px 14px;font-size:12.5px;color:#4B7A8A;line-height:1.65\" class=\"anim\">" + esc(p.bio) + "</div>" +
+    "<button class=\"btn btn-primary\" onclick=\"startChat('" + p.id + "')\" style=\"padding:10px 16px;font-size:12.5px;border-radius:8px;\">Start Conversation &#8594;</button>" +
+    "<div>" +
+      "<div class=\"lbl\" style=\"margin-bottom:8px\">Preset questions — click to ask</div>" +
+      "<div style=\"display:flex;flex-direction:column;gap:5px\">" + qsHtml + "</div>" +
+    "</div>";
+}
+
+/* ═══════════════════════════
+   START CHAT
+   ═══════════════════════════ */
+function startChat(id) {
+  var p = PERSONAS.find(function(x){ return x.id === id; });
+  if (!p) return;
+  currentPersona = p;
+  messages = [];
+  msgTranslations = {};
+  startSession(p);
+  setActiveItem(id);
+  setMode("chat");
+  renderChatHeader();
+  renderChatQs();
+  renderMessages();
+  setTimeout(function(){ var el = document.getElementById("chat-input"); if(el) el.focus(); }, 80);
+}
+
+function startChatQ(id, qIndex) {
+  var p = PERSONAS.find(function(x){ return x.id === id; });
+  if (!p) return;
+  currentPersona = p;
+  messages = [];
+  msgTranslations = {};
+  startSession(p);
+  setActiveItem(id);
+  setMode("chat");
+  renderChatHeader();
+  renderChatQs();
+  renderMessages();
+  setTimeout(function(){ sendMsg(p.questions[qIndex]); }, 80);
+}
+
+/* ═══════════════════════════
+   CHAT HEADER
+   ═══════════════════════════ */
+function renderChatHeader() {
+  var p = currentPersona;
+  var tagsStr = p.tags.slice(0,3).join(" &middot; ");
+  document.getElementById("chat-hdr").innerHTML =
+    "<div style=\"width:38px;height:38px;min-width:38px;border-radius:9px;background:" + p.dim + ";display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:" + p.color + ";border:1px solid " + p.color + "66;\">" + p.init + "</div>" +
+    "<div style=\"flex:1;min-width:0\">" +
+      "<div style=\"font-weight:600;font-size:13.5px;color:#E2E8F0\">" + esc(p.name) + " <span style=\"color:" + p.color + ";font-style:italic;font-size:11.5px\">&#8212; " + esc(p.archetype.split("—")[1] ? p.archetype.split("—")[1].trim() : p.archetype) + "</span></div>" +
+      "<div style=\"font-size:10.5px;color:#4B7A8A\">" + p.age + " &middot; " + esc(p.location) + " &middot; " + tagsStr + "</div>" +
+    "</div>" +
+    "<span style=\"font-size:9.5px;font-weight:600;letter-spacing:.06em;color:#F59E0B;background:#78350F44;border:1px solid #78350F88;border-radius:4px;padding:3px 8px;flex-shrink:0\">First Encounter</span>";
+
+  var bioEl = document.getElementById("chat-bio");
+  bioEl.textContent = p.bio;
+  bioEl.style.borderLeftColor = p.color;
+
+  var sendBtn = document.getElementById("send-btn");
+  if (sendBtn) sendBtn.style.background = p.color;
+}
+
+function renderChatQs() {
+  var p = currentPersona;
+  var html = "";
+  for (var i = 0; i < p.questions.length; i++) {
+    html += "<button class=\"q-btn\" onclick=\"sendQ(" + i + ")\">" + esc(p.questions[i]) + "</button>";
+  }
+  document.getElementById("chat-qs-inner").innerHTML = html;
+}
+
+/* ═══════════════════════════
+   MESSAGES
+   ═══════════════════════════ */
+function renderMessages() {
+  var p = currentPersona;
+  var container = document.getElementById("messages");
+  var qs = document.getElementById("chat-qs");
+  if (!p || !container) return;
+
+  var html = "";
+
+  if (messages.length === 0 && !isLoading) {
+    container.innerHTML = "<div style=\"display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;color:#2A3A50;\"><div style=\"font-size:11.5px;text-align:center;line-height:1.6\">Pick a question below or type your own</div></div>";
+    if (qs) qs.style.display = "block";
+    return;
+  }
+
+  if (qs) qs.style.display = "block";
+
+  var assistantMsgIndex = 0;
+  for (var i = 0; i < messages.length; i++) {
+    var m = messages[i];
+    var isUser = m.role === "user";
+    var avatarHtml = isUser ? "" :
+      "<div style=\"width:26px;height:26px;min-width:26px;border-radius:7px;background:" + p.dim + ";display:flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:700;color:" + p.color + ";margin-top:2px;flex-shrink:0\">" + p.init + "</div>";
+    var labelHtml = isUser ? "" :
+      "<div style=\"font-size:9.5px;font-weight:600;color:" + p.color + ";margin-bottom:5px;letter-spacing:.04em;text-transform:uppercase\">" + esc(p.name) + "</div>";
+    var bubbleBorder = isUser ? "1px solid #1E3A5F" : "1px solid #0F2040";
+    var bubbleBorderLeft = isUser ? "" : "border-left:3px solid " + p.color + ";";
+    var bubbleBg = isUser ? "#0F2040" : "#0A1628";
+    var textColor = isUser ? "#94A3B8" : "#CBD5E1";
+    var justify = isUser ? "flex-end" : "flex-start";
+
+    var transHtml = "";
+    if (!isUser) {
+      var msgIdx = assistantMsgIndex;
+      var cached = msgTranslations[msgIdx];
+      var transBlock = "";
+      if (cached) {
+        var langLabel = cached.lang === "kreyol" ? "KREYÒL" : "FRANÇAIS";
+        transBlock = "<div style=\"margin-top:8px;border-top:1px solid #0F2040;padding-top:8px\">" +
+          "<div style=\"font-size:9px;letter-spacing:.08em;color:#3A5A70;margin-bottom:4px;text-transform:uppercase\">" + langLabel + "</div>" +
+          "<div style=\"font-size:12px;color:#7EC8E3;line-height:1.65;white-space:pre-wrap\">" + esc(cached.text) + "</div>" +
+        "</div>";
+      }
+      transHtml = "<div style=\"margin-top:6px;display:flex;gap:5px;align-items:center\">" +
+        "<span style=\"font-size:9.5px;color:#2A3A50\">Translate →</span>" +
+        "<button class=\"btn\" onclick=\"translateMsg(" + msgIdx + ",'kreyol')\" style=\"font-size:10px;padding:3px 8px;" + (cached && cached.lang==='kreyol' ? "border-color:#7EC8E3;color:#7EC8E3;" : "") + "\">Kreyòl</button>" +
+        "<button class=\"btn\" onclick=\"translateMsg(" + msgIdx + ",'french')\" style=\"font-size:10px;padding:3px 8px;" + (cached && cached.lang==='french' ? "border-color:#7EC8E3;color:#7EC8E3;" : "") + "\">Français</button>" +
+        "</div>" + transBlock;
+      assistantMsgIndex++;
+    }
+
+    html +=
+      "<div class=\"anim\" style=\"display:flex;justify-content:" + justify + ";gap:8px\">" +
+        avatarHtml +
+        "<div class=\"msg-bubble-wrap\">" +
+          "<div style=\"background:" + bubbleBg + ";border:" + bubbleBorder + ";" + bubbleBorderLeft + "border-radius:10px;padding:10px 13px;font-size:12.5px;color:" + textColor + ";line-height:1.65\">" +
+            labelHtml +
+            "<div style=\"white-space:pre-wrap\">" + esc(m.content) + "</div>" +
+          "</div>" +
+          transHtml +
+        "</div>" +
+      "</div>";
+  }
+
+  if (isLoading) {
+    html +=
+      "<div class=\"anim\" style=\"display:flex;gap:8px;align-items:flex-start\">" +
+        "<div style=\"width:26px;height:26px;min-width:26px;border-radius:7px;background:" + p.dim + ";display:flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:700;color:" + p.color + ";flex-shrink:0\">" + p.init + "</div>" +
+        "<div style=\"background:#0A1628;border:1px solid #0F2040;border-left:3px solid " + p.color + ";border-radius:10px;padding:13px 16px;display:flex;gap:4px;align-items:center\">" +
+          "<span class=\"dot\" style=\"color:" + p.color + ";font-size:18px\">&#183;</span>" +
+          "<span class=\"dot\" style=\"color:" + p.color + ";font-size:18px\">&#183;</span>" +
+          "<span class=\"dot\" style=\"color:" + p.color + ";font-size:18px\">&#183;</span>" +
+        "</div>" +
+      "</div>";
+  }
+
+  html += "<div id=\"anchor\"></div>";
+  container.innerHTML = html;
+  requestAnimationFrame(function(){ var a = document.getElementById("anchor"); if(a) a.scrollIntoView({behavior:"smooth"}); });
+}
+
+/* ═══════════════════════════
+   TRANSLATE
+   ═══════════════════════════ */
+async function translateMsg(msgIdx, lang) {
+  var assistantMessages = messages.filter(function(m){ return m.role === "assistant"; });
+  var originalText = assistantMessages[msgIdx] ? assistantMessages[msgIdx].content : null;
+  if (!originalText) return;
+  if (!getApiKey()) { alert("Enter the access token first."); return; }
+
+  var targetName = lang === "kreyol" ? "Haitian Kreyòl" : "French";
+  var translatePrompt = "Translate the following text to " + targetName + ". Preserve the speaker's voice, register, and tone. Keep any " + targetName + " phrases already present. Return only the translation.\n\n" + originalText;
+
+  msgTranslations[msgIdx] = {lang: lang, text: "…"};
+  renderMessages();
+
+  try {
+    var res = await fetch(PROXY_URL, {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000, messages:[{role:"user",content:translatePrompt}] })
+    });
+    var data = await res.json();
+    if (data.error) {
+      msgTranslations[msgIdx] = {lang: lang, text: "[Error: " + data.error.message + "]"};
+    } else {
+      msgTranslations[msgIdx] = {lang: lang, text: data.content && data.content[0] ? data.content[0].text : "Translation unavailable."};
+    }
+  } catch(e) {
+    msgTranslations[msgIdx] = {lang: lang, text: "[Connection error]"};
+  }
+  renderMessages();
+}
+
+/* ═══════════════════════════
+   SEND
+   ═══════════════════════════ */
+function sendQ(i) {
+  if (!currentPersona) return;
+  sendMsg(currentPersona.questions[i]);
+}
+
+async function sendMsg(text) {
+  var input = document.getElementById("chat-input");
+  var content = text || (input && input.value.trim());
+  if (!content || !currentPersona || isLoading) return;
+  if (!getApiKey()) { alert("Enter the access token in the header field first."); return; }
+
+  if (input && !text) { input.value = ""; input.style.height = "auto"; }
+
+  messages.push({role:"user", content:content});
+  logExchange("user", content);
+  isLoading = true;
+  renderMessages();
+
+  try {
+    var res = await fetch(PROXY_URL, {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1000,
+        system: currentPersona.system,
+        messages: messages
+      })
+    });
+    var data = await res.json();
+    if (data.error) {
+      messages.push({role:"assistant", content:"[Error: " + data.error.message + "]"});
+    } else {
+      var reply = data.content && data.content[0] ? data.content[0].text : "Conexyon rate.";
+      messages.push({role:"assistant", content: reply});
+      logExchange("assistant", reply);
+    }
+  } catch(e) {
+    messages.push({role:"assistant", content:"Conexyon rate. Eseye ankò."});
+  }
+
+  isLoading = false;
+  renderMessages();
+  setTimeout(function(){ var el = document.getElementById("chat-input"); if(el) el.focus(); }, 50);
+}
+
+/* ═══════════════════════════
+   BROADCAST
+   ═══════════════════════════ */
+function showBroadcast() {
+  setMode("broadcast");
+  document.querySelectorAll(".p-item").forEach(function(el){ el.classList.remove("active"); });
+}
+
+function goBack() {
+  if (currentPersona) {
+    showProfile(currentPersona);
+    setActiveItem(currentPersona.id);
+  } else {
+    setMode("empty");
+  }
+}
+
+function buildBroadcastSuggestions() {
+  var html = "";
+  for (var i = 0; i < BROADCAST_QUESTIONS.length; i++) {
+    html += "<button class=\"q-btn\" onclick=\"setBcQ(" + i + ")\">" + esc(BROADCAST_QUESTIONS[i]) + "</button>";
+  }
+  document.getElementById("bc-suggested").innerHTML = html;
+}
+
+function setBcQ(i) {
+  var el = document.getElementById("bc-input");
+  if (el) el.value = BROADCAST_QUESTIONS[i];
+}
+
+async function broadcast() {
+  var input = document.getElementById("bc-input");
+  var q = input && input.value.trim();
+  if (!q || isBroadcasting) return;
+  if (!getApiKey()) { alert("Enter the access token in the header field first."); return; }
+
+  isBroadcasting = true;
+  broadcastResults = {};
+  for (var i = 0; i < PERSONAS.length; i++) broadcastResults[PERSONAS[i].id] = {status:"loading", text:""};
+  renderBcResults(q);
+
+  var btn = document.getElementById("bc-send");
+  if (btn) { btn.disabled = true; btn.textContent = "Asking all personas…"; }
+
+  for (var i = 0; i < PERSONAS.length; i++) {
+    var p = PERSONAS[i];
+    try {
+      var res = await fetch(PROXY_URL, {
+        method: "POST",
+        headers: apiHeaders(),
+        body: JSON.stringify({model:"claude-sonnet-4-20250514", max_tokens:600, system:p.system, messages:[{role:"user",content:q}]})
+      });
+      var data = await res.json();
+      if (data.error) {
+        broadcastResults[p.id] = {status:"error", text:data.error.message};
+      } else {
+        broadcastResults[p.id] = {status:"done", text: data.content && data.content[0] ? data.content[0].text : "No response."};
+      }
+    } catch(e) {
+      broadcastResults[p.id] = {status:"error", text:"Connection error."};
+    }
+    renderBcResults(q);
+  }
+
+  isBroadcasting = false;
+  logBroadcastSession(q, broadcastResults);
+  if (btn) { btn.disabled = false; btn.textContent = "Ask All 10 →"; }
+}
+
+function renderBcResults(q) {
+  var container = document.getElementById("bc-results");
+  if (!container || !Object.keys(broadcastResults).length) { if(container) container.innerHTML=""; return; }
+
+  var html = "<div style=\"grid-column:1/-1;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#3A5A70;padding-bottom:10px;border-bottom:1px solid #0F2040\">" +
+    "Responses to: <span style=\"color:#94A3B8;font-weight:400;text-transform:none;letter-spacing:normal;font-size:11px\">\"" + esc(q) + "\"</span></div>";
+
+  for (var i = 0; i < PERSONAS.length; i++) {
+    var p = PERSONAS[i];
+    var r = broadcastResults[p.id];
+    if (!r) continue;
+    var continueBtn = r.status === "done" ? "<button class=\"btn\" onclick=\"continueFromBc('" + p.id + "')\" style=\"font-size:10px;padding:3px 8px;flex-shrink:0\">Continue →</button>" : "";
+    var body = r.status === "loading"
+      ? "<div style=\"display:flex;gap:5px;align-items:center;padding:4px 0\"><span class=\"dot\" style=\"color:" + p.color + ";font-size:18px\">&#183;</span><span class=\"dot\" style=\"color:" + p.color + ";font-size:18px\">&#183;</span><span class=\"dot\" style=\"color:" + p.color + ";font-size:18px\">&#183;</span></div>"
+      : r.status === "done"
+      ? "<div style=\"font-size:12px;color:#CBD5E1;line-height:1.65;white-space:pre-wrap\">" + esc(r.text) + "</div>"
+      : "<div style=\"font-size:12px;color:#EF4444\">" + esc(r.text) + "</div>";
+
+    html +=
+      "<div class=\"bc-card\" style=\"border-left:3px solid " + p.color + "\">" +
+        "<div style=\"display:flex;align-items:center;gap:8px;margin-bottom:10px\">" +
+          "<div style=\"width:28px;height:28px;border-radius:7px;background:" + p.dim + ";display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:" + p.color + ";flex-shrink:0\">" + p.init + "</div>" +
+          "<div style=\"flex:1;min-width:0\">" +
+            "<div style=\"font-size:12px;font-weight:600;color:#E2E8F0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis\">" + esc(p.name) + "</div>" +
+            "<div style=\"font-size:10px;color:" + p.color + ";font-style:italic\">" + esc(p.archetype.split("—")[0].trim()) + " &middot; " + esc(p.location) + "</div>" +
+          "</div>" +
+          continueBtn +
+        "</div>" +
+        body +
+      "</div>";
+  }
+
+  container.innerHTML = html;
+}
+
+function continueFromBc(id) {
+  var p = PERSONAS.find(function(x){ return x.id === id; });
+  if (!p) return;
+  var bcInput = document.getElementById("bc-input");
+  var q = bcInput && bcInput.value.trim();
+  var r = broadcastResults[id];
+  currentPersona = p;
+  messages = q && r && r.text ? [{role:"user",content:q},{role:"assistant",content:r.text}] : [];
+  msgTranslations = {};
+  startSession(p);
+  if (messages.length) {
+    logExchange("user", q);
+    logExchange("assistant", r.text);
+  }
+  startChat(id);
+}
+
+/* ═══════════════════════════
+   MODE SWITCH
+   ═══════════════════════════ */
+function setMode(m) {
+  mode = m;
+  document.getElementById("empty").style.display          = m === "empty"     ? "flex"  : "none";
+  document.getElementById("profile-panel").style.display  = m === "profile"   ? "block" : "none";
+  document.getElementById("chat-panel").style.display     = m === "chat"      ? "flex"  : "none";
+  document.getElementById("bc-panel").style.display       = m === "broadcast" ? "block" : "none";
+  document.getElementById("log-panel").style.display      = m === "log"       ? "flex"  : "none";
+  document.getElementById("bc-btn").style.display         = (m === "broadcast") ? "none" : "";
+  document.getElementById("back-btn").style.display       = (m === "broadcast" || m === "log") ? "" : "none";
+  document.getElementById("log-btn").style.display        = (m === "log") ? "none" : "";
+}
+
+/* ═══════════════════════════
+   SESSION LOG
+   ═══════════════════════════ */
+function startSession(p) {
+  var ts = new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+  currentSession = { type:"chat", persona: p.name, personaId: p.id, timestamp: ts, exchanges: [] };
+  sessionLog.push(currentSession);
+  updateLogBadge();
+}
+
+function logExchange(role, content) {
+  if (currentSession) currentSession.exchanges.push({role: role, content: content});
+}
+
+function logBroadcastSession(q, results) {
+  var ts = new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+  var resultsCopy = {};
+  for (var k in results) resultsCopy[k] = {status: results[k].status, text: results[k].text};
+  sessionLog.push({ type:"broadcast", persona:"Broadcast — All 10", timestamp: ts, question: q, results: resultsCopy, exchanges: [] });
+  updateLogBadge();
+}
+
+function updateLogBadge() {
+  var badge = document.getElementById("log-count-badge");
+  if (badge) {
+    badge.textContent = sessionLog.length;
+    badge.style.display = sessionLog.length > 0 ? "inline" : "none";
+  }
+}
+
+function showLog() {
+  setMode("log");
+  renderLogList();
+  if (sessionLog.length > 0 && selectedLogIndex === -1) {
+    selectLog(sessionLog.length - 1);
+  } else if (selectedLogIndex >= 0) {
+    selectLog(selectedLogIndex);
+  }
+}
+
+function renderLogList() {
+  var col = document.getElementById("log-list-col");
+  if (!col) return;
+  if (!sessionLog.length) {
+    col.innerHTML = "<div style='padding:12px;font-size:11.5px;color:#2A3A50;'>No sessions yet.</div>";
+    document.getElementById("log-detail-col").innerHTML = "<div style='color:#2A3A50;font-size:11.5px;'>Start a conversation to see it here.</div>";
+    return;
+  }
+  var html = "";
+  for (var i = sessionLog.length - 1; i >= 0; i--) {
+    var s = sessionLog[i];
+    var isSelected = i === selectedLogIndex;
+    var icon = s.type === "broadcast" ? "&#x2295;" : "&#x25A3;";
+    html += "<div class='log-item" + (isSelected ? " active" : "") + "' onclick='selectLog(" + i + ")'>" +
+      "<div style='font-size:11px;font-weight:600;color:#CBD5E1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>" + icon + " " + esc(s.persona.split(" ")[0]) + " " + esc(s.persona.split(" ")[1] || "") + "</div>" +
+      "<div style='font-size:10px;color:#3A5A70;margin-top:1px'>" + esc(s.timestamp) + (s.type === "chat" ? " &middot; " + s.exchanges.length + " msg" : " &middot; broadcast") + "</div>" +
+    "</div>";
+  }
+  col.innerHTML = html;
+}
+
+function selectLog(i) {
+  selectedLogIndex = i;
+  renderLogList();
+  var s = sessionLog[i];
+  var detail = document.getElementById("log-detail-col");
+  if (!detail || !s) return;
+
+  var html = "<div style='font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#3A5A70;margin-bottom:14px'>" + esc(s.persona) + " &middot; " + esc(s.timestamp) + "</div>";
+
+  if (s.type === "broadcast") {
+    html += "<div style='font-size:13px;font-weight:600;color:#E2E8F0;margin-bottom:16px;line-height:1.4'>" + esc(s.question) + "</div>";
+    for (var j = 0; j < PERSONAS.length; j++) {
+      var p = PERSONAS[j];
+      var r = s.results[p.id];
+      if (!r || r.status !== "done") continue;
+      html += "<div style='margin-bottom:12px;padding:10px 12px;background:#070D18;border:1px solid #0F2040;border-left:3px solid " + p.color + ";border-radius:8px'>" +
+        "<div style='font-size:10.5px;font-weight:600;color:" + p.color + ";margin-bottom:5px'>" + esc(p.name) + " &middot; " + esc(p.location) + "</div>" +
+        "<div style='font-size:12px;color:#94A3B8;line-height:1.65;white-space:pre-wrap'>" + esc(r.text) + "</div>" +
+      "</div>";
+    }
+  } else {
+    var p = PERSONAS.find(function(x){ return x.id === s.personaId; });
+    for (var j = 0; j < s.exchanges.length; j++) {
+      var e = s.exchanges[j];
+      var isUser = e.role === "user";
+      html += "<div style='margin-bottom:8px;display:flex;justify-content:" + (isUser ? "flex-end" : "flex-start") + "'>" +
+        "<div style='max-width:82%;background:" + (isUser ? "#0F2040" : "#0A1628") + ";border:1px solid " + (isUser ? "#1E3A5F" : "#0F2040") + ";" + (p && !isUser ? "border-left:3px solid " + p.color + ";" : "") + "border-radius:8px;padding:8px 12px;font-size:12px;color:" + (isUser ? "#94A3B8" : "#CBD5E1") + ";line-height:1.6;white-space:pre-wrap'>" +
+        esc(e.content) + "</div></div>";
+    }
+    if (!s.exchanges.length) {
+      html += "<div style='color:#2A3A50;font-size:11.5px;'>No messages recorded.</div>";
+    }
+  }
+  detail.innerHTML = html;
+}
+
+function clearLog() {
+  if (!confirm("Clear all session logs?")) return;
+  sessionLog = [];
+  currentSession = null;
+  selectedLogIndex = -1;
+  updateLogBadge();
+  renderLogList();
+}
+
+function exportLog() {
+  if (!sessionLog.length) { alert("No sessions to export."); return; }
+  var data = JSON.stringify(sessionLog, null, 2);
+  var blob = new Blob([data], {type: "application/json"});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = "jumo-session-log-" + Date.now() + ".json";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ═══════════════════════════
+   KEYBOARD
+   ═══════════════════════════ */
+document.addEventListener("keydown", function(e) {
+  if (e.key === "Enter" && !e.shiftKey && document.activeElement === document.getElementById("chat-input")) {
+    e.preventDefault();
+    sendMsg();
+  }
+});
+</script>
+</body>
+</html>
