@@ -184,6 +184,7 @@
   <span class="brand-txt" style="font-family:'Playfair Display',serif;font-weight:700;font-size:15px">JUMO</span>
   <span class="brand-txt" style="font-size:10px;color:#3A5A70;padding:2px 8px;border:1px solid #0F2040;border-radius:4px;letter-spacing:.06em;text-transform:uppercase;font-weight:500">v1.5</span>
   <div style="flex:1"></div>
+  <a href="/admin" target="_blank" class="btn" style="text-decoration:none">&#9881; Admin</a>
   <button class="btn" id="log-btn" onclick="showLog()">&#x2393; Log <span id="log-count-badge" style="display:none;background:#1E3A5F;color:#94A3B8;border-radius:99px;padding:1px 6px;font-size:10px;margin-left:3px">0</span></button>
   <button class="btn" id="cmp-btn" onclick="showCompare()">&#x21C6; Compare</button>
   <button class="btn" id="bc-btn" onclick="showBroadcast()">&#x2295; Broadcast</button>
@@ -337,6 +338,7 @@ var compareMessagesB = [];
 var compareLoadingA = false;
 var compareLoadingB = false;
 var sessionNotes = {};
+var _supabaseSaveQueue = {};
 
 /* ═══════════════════════════
    HELPERS
@@ -900,7 +902,11 @@ function startSession(p) {
 }
 
 function logExchange(role, content) {
-  if (currentSession) { currentSession.exchanges.push({role: role, content: content}); saveSessionLog(); }
+  if (currentSession) {
+    currentSession.exchanges.push({role: role, content: content});
+    saveSessionLog();
+    if (role === 'assistant') saveSessionToServer(currentSession);
+  }
 }
 
 function logBroadcastSession(q, results) {
@@ -910,6 +916,7 @@ function logBroadcastSession(q, results) {
   sessionLog.push({ type:"broadcast", persona:"Broadcast — All 10", timestamp: ts, question: q, results: resultsCopy, exchanges: [] });
   updateLogBadge();
   saveSessionLog();
+  saveSessionToServer(sessionLog[sessionLog.length - 1]);
 }
 
 function updateLogBadge() {
@@ -1017,6 +1024,48 @@ function exportLog() {
   a.download = "jumo-session-log-" + Date.now() + ".json";
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/* ═══════════════════════════
+   TESTER ID + SERVER SAVE
+   ═══════════════════════════ */
+function generateId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+function getTesterId() {
+  var id = null;
+  try { id = localStorage.getItem('jumo_tester_id'); } catch(e) {}
+  if (!id) { id = generateId(); try { localStorage.setItem('jumo_tester_id', id); } catch(e) {} }
+  return id;
+}
+
+function saveSessionToServer(session, noteIdx) {
+  if (!session || !getToken()) return;
+  if (!session.server_id) session.server_id = generateId();
+  var idx = (noteIdx !== undefined) ? noteIdx : sessionLog.indexOf(session);
+  var notes = (idx >= 0 && sessionNotes[idx]) ? sessionNotes[idx] : null;
+  var body = {
+    id: session.server_id,
+    type: session.type || 'chat',
+    persona_name: session.persona || null,
+    persona_id: session.personaId || null,
+    session_timestamp: session.timestamp || null,
+    exchanges: session.exchanges || [],
+    broadcast_question: session.question || null,
+    broadcast_results: session.results || null,
+    researcher_notes: notes,
+    tester_id: getTesterId()
+  };
+  fetch('/api/sessions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-access-token': getToken() },
+    body: JSON.stringify(body)
+  }).catch(function() {}); // silent fail — localStorage is the backup
 }
 
 /* ═══════════════════════════
@@ -1185,6 +1234,8 @@ function saveNote(idx) {
     delete sessionNotes[idx];
   }
   try { localStorage.setItem("jumo_notes", JSON.stringify(sessionNotes)); } catch(e) {}
+  var s = sessionLog[idx];
+  if (s && s.server_id) saveSessionToServer(s, idx);
 }
 
 function loadNotes() {
