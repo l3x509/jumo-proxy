@@ -599,7 +599,7 @@ async function translateMsg(msgIdx, lang) {
     var res = await fetch(PROXY_URL, {
       method: "POST",
       headers: apiHeaders(),
-      body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000, messages:[{role:"user",content:translatePrompt}] })
+      body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1000, messages:[{role:"user",content:translatePrompt}] })
     });
     var data = await res.json();
     if (data.error) {
@@ -639,7 +639,7 @@ async function sendMsg(text) {
       method: "POST",
       headers: apiHeaders(),
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 1000,
         system: currentPersona.system,
         messages: messages
@@ -712,7 +712,7 @@ async function broadcast() {
       var res = await fetch(PROXY_URL, {
         method: "POST",
         headers: apiHeaders(),
-        body: JSON.stringify({model:"claude-sonnet-4-20250514", max_tokens:600, system:p.system, messages:[{role:"user",content:q}]})
+        body: JSON.stringify({model:"claude-sonnet-4-6", max_tokens:600, system:p.system, messages:[{role:"user",content:q}]})
       });
       var data = await res.json();
       if (data.error) {
