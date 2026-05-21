@@ -1,131 +1,16 @@
-# JUMO — Deployment & Update Guide
-### Railway (proxy) + GitHub auto-deploy
-
----
-
-## Architecture
-
-```
-Tester browser
-    ↓  loads page
-Railway (serves public/index.html + public/personas.js)
-    ↓  POST /api/messages + access token
-Railway (Express proxy — server.js)
-    ↓  adds API key, forwards
-Anthropic API
-```
-
-Your API key never touches the browser.  
-Testers authenticate with a shared access token you choose.  
-**Personas live in `public/personas.js` — the only file you ever update.**
-
----
-
-## Repo structure
-
-```
-jumo-proxy/
-├── server.js              ← Express proxy (don't touch)
-├── package.json
-├── .gitignore
-└── public/
-    ├── index.html         ← UI shell (don't touch)
-    └── personas.js        ← ALL persona data lives here ← THIS IS WHAT YOU UPDATE
-```
-
----
-
-## First-time deployment
-
-### 1. Push to GitHub
-
-```bash
-git init
-git add .
-git commit -m "JUMO v1.5"
-git remote add origin https://github.com/YOUR_USERNAME/jumo-proxy.git
-git push -u origin main
-```
-
-### 2. Deploy on Railway
-
-1. **railway.app** → New Project → Deploy from GitHub repo → select `jumo-proxy`
-2. Railway detects Node.js and deploys automatically
-3. Go to **Variables** tab and set:
-
-| Variable | Value |
-|---|---|
-| `ANTHROPIC_API_KEY` | `sk-ant-your-key-here` |
-| `ACCESS_TOKEN` | any password (share this with testers) |
-
-4. Go to **Settings → Networking → Generate Domain** to get your public URL
-
-Test it: `https://your-url.up.railway.app/health` → should return `{"status":"ok"}`
-
-### 3. Share with testers
-
-Send them:
-- **URL:** `https://your-url.up.railway.app`
-- **Access token:** whatever you set as `ACCESS_TOKEN`
-
----
-
-## Updating personas after a session
-
-This is the only thing you'll do regularly. Two steps.
-
-**Step 1 — Generate updated `personas.js`**
-
-Upload your updated corpus file to Claude and say:
-
-> "Read the latest validated sections in this corpus and generate me an updated personas.js file for the JUMO test shell. Use the existing personas.js as the base — only update what the corpus has validated."
-
-Claude outputs a new `personas.js`.
-
-**Step 2 — Push to GitHub**
-
-```bash
-# Replace public/personas.js with the new file Claude gave you, then:
-git add public/personas.js
-git commit -m "personas: update from corpus session 5"
-git push
-```
-
-Railway auto-detects the push and redeploys in ~2 minutes.  
-All testers see the updated personas on next page refresh.  
-**No HTML changes. No server changes. No redeployment config.**
-
----
-
-## Updating broadcast questions
-
-Same process — the questions are at the bottom of `personas.js`:
-
-```javascript
-var BROADCAST_QUESTIONS = [
-  "question 1",
-  "question 2",
-  ...
-];
-```
-
-Edit → push → done.
-
----
-
-## Cost estimate
-
-**Railway Hobby:** $5/month  
-**Anthropic API:** ~$0.003–0.005 per message (claude-sonnet-4)  
-10 testers × 20 messages + 5 broadcasts each ≈ **$2–4 total**
-
-Set a hard monthly limit: Anthropic Console → Limits → Set monthly budget.
-
-**Rate limiting:** 60 requests per IP per 15 minutes (edit `max` in `server.js` to change).
-
----
-
-## Changing the access token
-
-Railway Variables tab → update `ACCESS_TOKEN` → Railway restarts automatically.  
-No code push needed.
+{
+  "name": "jumo-proxy",
+  "version": "1.6.0",
+  "main": "server.js",
+  "scripts": {
+    "build": "node build.js",
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5"
+  }
+}
