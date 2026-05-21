@@ -1,0 +1,174 @@
+#!/usr/bin/env node
+/**
+ * JUMO — Persona Build Script
+ *
+ * Reads personas-source.md and generates public/personas.js
+ * Railway runs this automatically before starting the server.
+ *
+ * Format of personas-source.md:
+ *
+ *   ## PERSONA: marie-ange
+ *   name: Marie-Ange Desrosiers
+ *   archetype: Poto Mitan — The Load-Bearing Pillar
+ *   location: Carrefour, Port-au-Prince
+ *   age: 38
+ *   color: #F59E0B
+ *   dim: #1C0E00
+ *   init: MA
+ *   tags: Madan Sara, Carrefour, 3 Timoun, Sòl
+ *   bio: Single mother of three in Carrefour...
+ *   questions:
+ *     - What would actually make your komes easier?
+ *     - Your 15-year-old — how do you think about his future?
+ *     - When a new organization arrives, how do you decide if they're real?
+ *   system:
+ *   You are Marie-Ange Desrosiers, 38...
+ *   [full system prompt, all lines until next ## PERSONA or ## BROADCAST]
+ *   ---
+ *
+ *   ## BROADCAST
+ *   - The Jovenel verdict — 4 convicted...
+ *   - Haiti played at the World Cup...
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+const SOURCE = path.join(__dirname, 'personas-source.md');
+const OUTPUT = path.join(__dirname, 'public', 'personas.js');
+
+if (!fs.existsSync(SOURCE)) {
+  console.log('⚠  personas-source.md not found — skipping build, using existing personas.js');
+  process.exit(0);
+}
+
+const raw = fs.readFileSync(SOURCE, 'utf8');
+const lines = raw.split('\n');
+
+const personas = [];
+const broadcastQuestions = [];
+let current = null;
+let mode = null; // 'meta' | 'system' | 'broadcast'
+let systemLines = [];
+
+function flushPersona() {
+  if (!current) return;
+  current.system = systemLines.join('\n').trim();
+  personas.push(current);
+  current = null;
+  systemLines = [];
+}
+
+for (let i = 0; i < lines.length; i++) {
+  const line = lines[i];
+
+  if (line.startsWith('## PERSONA:')) {
+    flushPersona();
+    const id = line.replace('## PERSONA:', '').trim();
+    current = { id, name:'', archetype:'', location:'', age:0, color:'', dim:'', init:'', bio:'', tags:[], questions:[], system:'' };
+    mode = 'meta';
+    continue;
+  }
+
+  if (line.startsWith('## BROADCAST')) {
+    flushPersona();
+    mode = 'broadcast';
+    continue;
+  }
+
+  if (mode === 'broadcast') {
+    if (line.trim().startsWith('- ')) {
+      broadcastQuestions.push(line.trim().slice(2).trim());
+    }
+    continue;
+  }
+
+  if (!current) continue;
+
+  if (mode === 'meta') {
+    if (line.startsWith('name:'))      { current.name      = line.slice(5).trim(); continue; }
+    if (line.startsWith('archetype:')) { current.archetype = line.slice(10).trim(); continue; }
+    if (line.startsWith('location:'))  { current.location  = line.slice(9).trim(); continue; }
+    if (line.startsWith('age:'))       { current.age       = parseInt(line.slice(4).trim(), 10); continue; }
+    if (line.startsWith('color:'))     { current.color     = line.slice(6).trim(); continue; }
+    if (line.startsWith('dim:'))       { current.dim       = line.slice(4).trim(); continue; }
+    if (line.startsWith('init:'))      { current.init      = line.slice(5).trim(); continue; }
+    if (line.startsWith('bio:'))       { current.bio       = line.slice(4).trim(); continue; }
+    if (line.startsWith('tags:'))      { current.tags      = line.slice(5).split(',').map(t => t.trim()); continue; }
+    if (line.startsWith('questions:')) { mode = 'questions'; continue; }
+    if (line.startsWith('system:'))    { mode = 'system'; continue; }
+    if (line.trim() === '---') { flushPersona(); continue; }
+  }
+
+  if (mode === 'questions') {
+    if (line.trim().startsWith('- ')) {
+      current.questions.push(line.trim().slice(2).trim());
+    } else if (line.startsWith('system:')) {
+      mode = 'system';
+    } else if (line.trim() && !line.startsWith(' ') && !line.startsWith('\t')) {
+      mode = 'meta'; // back to meta if unrecognised key
+      i--; // reprocess this line
+    }
+    continue;
+  }
+
+  if (mode === 'system') {
+    if (line.trim() === '---') { flushPersona(); continue; }
+    systemLines.push(line);
+    continue;
+  }
+}
+flushPersona(); // flush last persona
+
+if (!personas.length) {
+  console.error('✗  No personas found in personas-source.md. Check the format.');
+  process.exit(1);
+}
+
+// Generate output JS
+const jsPersonas = personas.map(p => {
+  const tagsJs = JSON.stringify(p.tags);
+  const qsJs   = JSON.stringify(p.questions);
+  const sysJs  = JSON.stringify(p.system);
+  return `  {
+    id: ${JSON.stringify(p.id)},
+    name: ${JSON.stringify(p.name)},
+    archetype: ${JSON.stringify(p.archetype)},
+    location: ${JSON.stringify(p.location)},
+    age: ${p.age},
+    bio: ${JSON.stringify(p.bio)},
+    tags: ${tagsJs},
+    questions: ${qsJs},
+    color: ${JSON.stringify(p.color)},
+    dim: ${JSON.stringify(p.dim)},
+    init: ${JSON.stringify(p.init)},
+    system: ${sysJs}
+  }`;
+}).join(',\n\n');
+
+const jsBroadcast = JSON.stringify(broadcastQuestions, null, 2);
+
+const output = `/* ═══════════════════════════════════════════════════════════════
+   JUMO — Persona Data (AUTO-GENERATED by build.js)
+   Source: personas-source.md
+   Generated: ${new Date().toISOString()}
+
+   DO NOT EDIT THIS FILE directly.
+   Edit personas-source.md, then push to GitHub.
+   Railway runs build.js on deploy → this file is regenerated.
+   ═══════════════════════════════════════════════════════════════ */
+
+var PERSONAS = [
+
+${jsPersonas}
+
+]; /* END PERSONAS */
+
+/* ═══════════════════════════
+   BROADCAST QUESTIONS
+   ═══════════════════════════ */
+var BROADCAST_QUESTIONS = ${jsBroadcast};
+`;
+
+fs.writeFileSync(OUTPUT, output, 'utf8');
+console.log(`✓  personas.js generated — ${personas.length} personas, ${broadcastQuestions.length} broadcast questions`);
