@@ -586,6 +586,160 @@ app.post('/api/partner/validate', async (req, res) => {
   res.json({ success: true, verdicts_saved: verdicts.length });
 });
 
+/* ═══════════════════════════════════════════════════════════
+   FLAGS
+   Quality feedback loop: test shell → flag → partner → corpus
+
+   Requires jumo_flags table in Supabase:
+
+   create table jumo_flags (
+     id text primary key,
+     session_id text,
+     persona_id text,
+     persona_name text,
+     persona_color text default '#3A5A70',
+     question_text text,
+     response_text text,
+     flag_type text default 'culturally_inaccurate',
+     domain_hint text,
+     admin_notes text,
+     send_to_partner boolean default false,
+     partner_correction text,
+     partner_notes text,
+     status text default 'open',
+     resolved_to text,
+     created_at timestamptz default now(),
+     updated_at timestamptz default now()
+   );
+
+   Also add item_type column to jumo_validation_queue:
+   alter table jumo_validation_queue
+     add column if not exists item_type text default 'domain_validation',
+     add column if not exists flag_id text;
+   ═══════════════════════════════════════════════════════════ */
+
+/* POST /api/flags — create flag from test shell */
+app.post('/api/flags', async (req, res) => {
+  const token = req.headers['x-access-token'];
+  if (!token || token !== ACCESS_TOKEN)
+    return res.status(401).json({ error: 'Invalid access token.' });
+
+  if (!supabase)
+    return res.status(503).json({ error: 'Storage not configured.' });
+
+  const flag = req.body;
+  if (!flag.persona_id || !flag.response_text)
+    return res.status(400).json({ error: 'persona_id and response_text required.' });
+
+  const now = new Date().toISOString();
+  const flagId = flag.id || `flag-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+
+  const { error } = await supabase.from('jumo_flags').insert({
+    id:            flagId,
+    session_id:    flag.session_id    || null,
+    persona_id:    flag.persona_id,
+    persona_name:  flag.persona_name  || flag.persona_id,
+    persona_color: flag.persona_color || '#3A5A70',
+    question_text: flag.question_text || '',
+    response_text: flag.response_text,
+    flag_type:     flag.flag_type     || 'culturally_inaccurate',
+    domain_hint:   flag.domain_hint   || null,
+    admin_notes:   flag.admin_notes   || null,
+    send_to_partner: flag.send_to_partner || false,
+    status:        flag.send_to_partner ? 'sent_to_partner' : 'open',
+    created_at:    now,
+    updated_at:    now,
+  });
+
+  if (error) {
+    console.error('Flag insert error:', error.message);
+    return res.status(500).json({ error: error.message });
+  }
+
+  /* If send_to_partner: insert into validation_queue as a flag_correction item */
+  if (flag.send_to_partner) {
+    const domainLabel = flag.domain_hint
+      ? (DOMAIN_LABELS[flag.domain_hint] || flag.domain_hint)
+      : 'Response Correction';
+
+    const partnerNote = [
+      '⚑ WRONG RESPONSE — please provide the correct information',
+      '',
+      'Question asked:',
+      flag.question_text || '(not captured)',
+      '',
+      'Admin note:',
+      flag.admin_notes || '(none)',
+    ].join('\n');
+
+    await supabase.from('jumo_validation_queue').insert({
+      id:           `flag-${flagId}`,
+      persona_id:   flag.persona_id,
+      persona_name: flag.persona_name || flag.persona_id,
+      domain:       flag.domain_hint  || 'general',
+      domain_label: domainLabel,
+      content:      flag.response_text,
+      admin_notes:  partnerNote,
+      item_type:    'flag_correction',
+      flag_id:      flagId,
+      status:       'pending',
+      created_at:   now,
+      updated_at:   now,
+    });
+  }
+
+  res.json({ success: true, flag_id: flagId });
+});
+
+/* GET /api/flags — admin: list all flags */
+app.get('/api/flags', async (req, res) => {
+  const token = req.query.token || req.headers['x-admin-token'];
+  if (!token || token !== ADMIN_TOKEN)
+    return res.status(401).json({ error: 'Admin token required.' });
+
+  if (!supabase)
+    return res.status(503).json({ error: 'Storage not configured.' });
+
+  let q = supabase
+    .from('jumo_flags')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (req.query.persona_id) q = q.eq('persona_id', req.query.persona_id);
+  if (req.query.status)     q = q.eq('status', req.query.status);
+  if (req.query.domain)     q = q.eq('domain_hint', req.query.domain);
+
+  const { data, error } = await q.limit(200);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+/* PUT /api/flags/:id — admin: update status, add correction, resolve */
+app.put('/api/flags/:id', async (req, res) => {
+  const token = req.query.token || req.headers['x-admin-token'];
+  if (!token || token !== ADMIN_TOKEN)
+    return res.status(401).json({ error: 'Admin token required.' });
+
+  if (!supabase)
+    return res.status(503).json({ error: 'Storage not configured.' });
+
+  const update = req.body;
+  const { error } = await supabase
+    .from('jumo_flags')
+    .update({
+      status:             update.status,
+      admin_notes:        update.admin_notes,
+      domain_hint:        update.domain_hint,
+      resolved_to:        update.resolved_to   || null,
+      partner_correction: update.partner_correction || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', req.params.id);
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
 /* ── Health ── */
 app.get('/health', (req, res) => res.json({
   status:         'ok',
