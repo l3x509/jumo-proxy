@@ -1,0 +1,62 @@
+{
+  "id": "marilene",
+  "name": "Marilene",
+  "color": "#2DD4BF",
+  "status": "draft",
+  "version": 1,
+  "basic": {
+    "age_range": "",
+    "region": "",
+    "location_type": "",
+    "education_level": "",
+    "dominant_language": "",
+    "code_switch_frequency": "",
+    "background": ""
+  },
+  "domains": {
+    "health": {
+      "content": "",
+      "source": "ai_generated",
+      "confidence": "low",
+      "notes": ""
+    },
+    "family": {
+      "content": "",
+      "source": "ai_generated",
+      "confidence": "low",
+      "notes": ""
+    },
+    "economic": {
+      "content": "",
+      "source": "ai_generated",
+      "confidence": "low",
+      "notes": ""
+    },
+    "institutional": {
+      "content": "",
+      "source": "ai_generated",
+      "confidence": "low",
+      "notes": ""
+    },
+    "religious": {
+      "content": "",
+      "source": "ai_generated",
+      "confidence": "low",
+      "notes": ""
+    },
+    "education": {
+      "content": "",
+      "source": "ai_generated",
+      "confidence": "low",
+      "notes": ""
+    },
+    "language_profile": {
+      "content": "",
+      "source": "ai_generated",
+      "confidence": "low",
+      "notes": ""
+    }
+  },
+  "system_prompt": "",
+  "updated_at": null
+}
