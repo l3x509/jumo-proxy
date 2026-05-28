@@ -238,6 +238,7 @@
 <div id="tab-bar">
   <button class="tab-btn tab-active" data-tab="sessions" onclick="showTab('sessions')">Sessions</button>
   <button class="tab-btn" data-tab="personas" onclick="showTab('personas')">Personas</button>
+  <button class="tab-btn" data-tab="flags" onclick="showTab('flags')">⚑ Flags <span id="flags-badge" style="display:none;background:#7F1D1D;color:#FCA5A5;border-radius:99px;padding:1px 6px;font-size:10px;margin-left:2px">0</span></button>
 </div>
 
 <!-- ══════════ SESSIONS VIEW ══════════ -->
@@ -425,6 +426,32 @@
   </div>
 </div>
 
+<!-- ══════════ FLAGS VIEW ══════════ -->
+<div id="flags-view" class="view" style="overflow:hidden;">
+  <div class="v-sidebar">
+    <!-- Filters -->
+    <div style="padding:10px 12px;border-bottom:1px solid #0F2040;flex-shrink:0;">
+      <div style="font-size:12px;font-weight:600;color:#CBD5E1;margin-bottom:8px;">⚑ Flagged Responses</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <select id="flag-filter-status" onchange="loadFlags()" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:5px 8px;font-size:11.5px;font-family:inherit;">
+          <option value="">All statuses</option>
+          <option value="open">Open</option>
+          <option value="sent_to_partner">Sent to partner</option>
+          <option value="partner_responded">Partner responded</option>
+          <option value="resolved">Resolved</option>
+        </select>
+        <select id="flag-filter-persona" onchange="loadFlags()" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:5px 8px;font-size:11.5px;font-family:inherit;">
+          <option value="">All personas</option>
+        </select>
+      </div>
+    </div>
+    <div id="flags-list" style="flex:1;overflow-y:auto;padding:6px;"></div>
+  </div>
+  <div class="v-detail" id="flag-detail">
+    <div style="color:#2A3A50;font-size:12px;padding-top:40px;text-align:center;">Select a flag to review</div>
+  </div>
+</div>
+
 <!-- ═══════════════════════════
      PROMPT PREVIEW MODAL
      ═══════════════════════════ -->
@@ -553,8 +580,10 @@ function initByRole() {
 function showTab(tab) {
   document.getElementById('sessions-view').classList.toggle('active', tab==='sessions');
   document.getElementById('personas-view').classList.toggle('active', tab==='personas');
+  document.getElementById('flags-view').classList.toggle('active', tab==='flags');
   document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.toggle('tab-active', b.dataset.tab===tab); });
   if (tab==='personas' && Object.keys(personaData).length===0) loadPersonas();
+  if (tab==='flags') loadFlags();
 }
 
 /* ════════════════════════════
@@ -959,29 +988,59 @@ function renderPartnerItems() {
   partnerItems.forEach(function(item,idx){
     var color=personaColor(item.persona_id)||'#3A5A70';
     var v=partnerVerdicts[item.id];
+    var isFlagCorrection=(item.item_type==='flag_correction');
     var cardClass='val-card'+(v&&v.verdict?(v.verdict==='wrong'?' flagged':' done'):'');
-    var btns=PARTNER_VERDICTS.map(function(vd){
-      var sel=v&&v.verdict===vd.key?' '+vd.cls:'';
-      return '<button class="verdict-btn'+sel+'" onclick="setPartnerVerdict(\''+item.id+'\',\''+vd.key+'\')">'+vd.label+'<br><span style="font-size:10px;font-weight:400;opacity:.7">'+vd.sub+'</span></button>';
-    }).join('');
-    html+='<div class="'+cardClass+' anim" id="pcard-'+item.id+'" style="animation-delay:'+Math.min(idx*.05,.3)+'s">'+
-      '<div class="val-card-header">'+
-        '<div class="val-persona-dot" style="background:'+color+'"></div>'+
-        '<div class="val-persona-name" style="color:'+color+'">'+esc(item.persona_name)+'</div>'+
-        '<div class="val-domain-badge">'+esc(item.domain_label||item.domain)+'</div>'+
-      '</div>'+
-      '<div class="val-content">'+
-        '<div class="val-content-lbl">Kontni ki ekri pou persona sa</div>'+
-        '<div class="val-content-text">'+esc(item.content)+'</div>'+
-        (item.admin_notes?'<div class="val-admin-note">💬 '+esc(item.admin_notes)+'</div>':'')+
-      '</div>'+
-      '<div class="verdict-section">'+
-        '<div class="verdict-lbl">Ki opinyon ou sou enfòmasyon sa?</div>'+
-        '<div class="verdict-grid">'+btns+'</div>'+
-        '<textarea class="notes-area" id="pnotes-'+item.id+'" placeholder="Nòt ou yo (opsyonèl)…" oninput="savePartnerNote(\''+item.id+'\')">'+(v&&v.notes?esc(v.notes):'')+'</textarea>'+
-        (v&&v.verdict?'<div class="done-indicator">✓ Ou revize eleman sa</div>':'')+
-      '</div>'+
-    '</div>';
+    var animDelay='animation-delay:'+Math.min(idx*.05,.3)+'s';
+
+    if(isFlagCorrection){
+      /* Flag correction item — partner writes what the correct answer should be */
+      var typeLabel=item.domain_label||item.domain||'Response';
+      html+='<div class="'+cardClass+' anim" id="pcard-'+item.id+'" style="'+animDelay+';border-color:#78350F">'+
+        '<div class="val-card-header" style="background:#1A0A00">'+
+          '<div style="font-size:10px;background:#78350F;color:#FCD34D;border-radius:4px;padding:2px 8px;font-weight:600;">⚑ Repons ki pa bon</div>'+
+          '<div class="val-persona-name" style="color:'+color+'">'+esc(item.persona_name)+'</div>'+
+          '<div class="val-domain-badge">'+esc(typeLabel)+'</div>'+
+        '</div>'+
+        '<div class="val-content">'+
+          '<div class="val-content-lbl" style="color:#F59E0B">Sa JUMO te di (pa bon)</div>'+
+          '<div class="val-content-text" style="border-left:3px solid #EF4444;">'+esc(item.content)+'</div>'+
+          (item.admin_notes?'<div class="val-admin-note" style="white-space:pre-wrap">'+esc(item.admin_notes)+'</div>':'')+
+        '</div>'+
+        '<div class="verdict-section">'+
+          '<div class="verdict-lbl" style="color:#F59E0B">Ekri enfòmasyon ki kòrèk la:</div>'+
+          '<textarea class="notes-area" id="pnotes-'+item.id+'" placeholder="Ekri sa JUMO ta dwe di… Ki sa ki vre pou persona sa?" oninput="savePartnerNote(\''+item.id+'\')" style="min-height:100px;">'+(v&&v.notes?esc(v.notes):'')+'</textarea>'+
+          '<div style="margin-top:8px;display:flex;gap:6px;">'+
+            '<button class="verdict-btn'+(v&&v.verdict==='accurate'?' sel-accurate':'')+'" onclick="setPartnerVerdict(\''+item.id+'\',\'accurate\')" style="flex:1">✓ Mwen ekri kòreksyon an</button>'+
+            '<button class="verdict-btn'+(v&&v.verdict==='wrong'?' sel-wrong':'')+'" onclick="setPartnerVerdict(\''+item.id+'\',\'wrong\')" style="flex:1">✗ Mwen pa konn repons lan</button>'+
+          '</div>'+
+          (v&&v.verdict?'<div class="done-indicator">✓ Ou reponn sou eleman sa</div>':'')+
+        '</div>'+
+      '</div>';
+    } else {
+      /* Standard domain validation item */
+      var btns=PARTNER_VERDICTS.map(function(vd){
+        var sel=v&&v.verdict===vd.key?' '+vd.cls:'';
+        return '<button class="verdict-btn'+sel+'" onclick="setPartnerVerdict(\''+item.id+'\',\''+vd.key+'\')">'+vd.label+'<br><span style="font-size:10px;font-weight:400;opacity:.7">'+vd.sub+'</span></button>';
+      }).join('');
+      html+='<div class="'+cardClass+' anim" id="pcard-'+item.id+'" style="'+animDelay+'">'+
+        '<div class="val-card-header">'+
+          '<div class="val-persona-dot" style="background:'+color+'"></div>'+
+          '<div class="val-persona-name" style="color:'+color+'">'+esc(item.persona_name)+'</div>'+
+          '<div class="val-domain-badge">'+esc(item.domain_label||item.domain)+'</div>'+
+        '</div>'+
+        '<div class="val-content">'+
+          '<div class="val-content-lbl">Kontni ki ekri pou persona sa</div>'+
+          '<div class="val-content-text">'+esc(item.content)+'</div>'+
+          (item.admin_notes?'<div class="val-admin-note">💬 '+esc(item.admin_notes)+'</div>':'')+
+        '</div>'+
+        '<div class="verdict-section">'+
+          '<div class="verdict-lbl">Ki opinyon ou sou enfòmasyon sa?</div>'+
+          '<div class="verdict-grid">'+btns+'</div>'+
+          '<textarea class="notes-area" id="pnotes-'+item.id+'" placeholder="Nòt ou yo (opsyonèl)…" oninput="savePartnerNote(\''+item.id+'\')">'+(v&&v.notes?esc(v.notes):'')+'</textarea>'+
+          (v&&v.verdict?'<div class="done-indicator">✓ Ou revize eleman sa</div>':'')+
+        '</div>'+
+      '</div>';
+    }
   });
   container.innerHTML=html;
 }
@@ -1100,6 +1159,279 @@ function exportCSV(){
 }
 
 function esc(str){ return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+/* ════════════════════════════
+   FLAGS (admin)
+   ════════════════════════════ */
+var flagsData = [];
+var selectedFlagId = null;
+
+var FLAG_TYPE_LABELS = {
+  culturally_inaccurate: '🌍 Culturally inaccurate',
+  off_persona:           '👤 Off-persona',
+  too_generic:           '📋 Too generic',
+  factually_wrong:       '✗ Factually wrong',
+  missing_info:          '+ Missing info',
+  wrong_register:        '💬 Wrong register'
+};
+
+var FLAG_STATUS_COLORS = {
+  open:               '#EF4444',
+  sent_to_partner:    '#F59E0B',
+  partner_responded:  '#22D3EE',
+  resolved:           '#34D399'
+};
+
+async function loadFlags() {
+  document.getElementById('flags-list').innerHTML='<div style="padding:12px;color:#2A3A50">Loading…</div>';
+
+  var statusFilter  = document.getElementById('flag-filter-status')  ? document.getElementById('flag-filter-status').value  : '';
+  var personaFilter = document.getElementById('flag-filter-persona') ? document.getElementById('flag-filter-persona').value : '';
+
+  var url = '/api/flags?token='+encodeURIComponent(currentToken);
+  if (statusFilter)  url += '&status='+encodeURIComponent(statusFilter);
+  if (personaFilter) url += '&persona_id='+encodeURIComponent(personaFilter);
+
+  try {
+    var res = await fetch(url);
+    if (res.ok) {
+      flagsData = await res.json();
+    } else {
+      flagsData = [];
+    }
+  } catch(e) { flagsData = []; }
+
+  buildFlagPersonaFilter();
+  renderFlagsList();
+  updateFlagsBadge();
+}
+
+function buildFlagPersonaFilter() {
+  var sel = document.getElementById('flag-filter-persona');
+  if (!sel) return;
+  var current = sel.value;
+  var seen = {};
+  var opts = '<option value="">All personas</option>';
+  flagsData.forEach(function(f) {
+    if (!seen[f.persona_id]) {
+      seen[f.persona_id] = true;
+      opts += '<option value="'+esc(f.persona_id)+'">'+esc(f.persona_name||f.persona_id)+'</option>';
+    }
+  });
+  sel.innerHTML = opts;
+  if (current) sel.value = current;
+}
+
+function updateFlagsBadge() {
+  var open = flagsData.filter(function(f){ return f.status !== 'resolved'; }).length;
+  var badge = document.getElementById('flags-badge');
+  if (badge) { badge.textContent = open; badge.style.display = open > 0 ? 'inline' : 'none'; }
+}
+
+function renderFlagsList() {
+  var list = document.getElementById('flags-list');
+  if (!flagsData.length) {
+    list.innerHTML = '<div style="padding:12px;color:#2A3A50;font-size:11.5px;">No flags yet. Flag wrong responses in the test shell.</div>';
+    return;
+  }
+  var html = '';
+  flagsData.forEach(function(f) {
+    var statusColor = FLAG_STATUS_COLORS[f.status] || '#3A5A70';
+    var typeLabel   = FLAG_TYPE_LABELS[f.flag_type] || f.flag_type || 'Flagged';
+    var dt = f.created_at ? new Date(f.created_at).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+    var hasCorrection = !!(f.partner_correction && f.partner_correction.trim());
+    html += '<div class="s-item'+(f.id===selectedFlagId?' active':'')+'" onclick="selectFlag(\''+esc(f.id)+'\')" style="border-left:3px solid '+(f.persona_color||'#3A5A70')+'">'+
+      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">'+
+        '<div style="font-size:11px;font-weight:600;color:#CBD5E1;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(f.persona_name||f.persona_id)+'</div>'+
+        '<div style="width:7px;height:7px;border-radius:50%;background:'+statusColor+';flex-shrink:0;"></div>'+
+      '</div>'+
+      '<div style="font-size:10px;color:#3A5A70;">'+esc(typeLabel.replace(/^[^\s]+\s/,''))+(f.domain_hint?' · '+esc(f.domain_hint):'')+'</div>'+
+      '<div style="font-size:10px;color:#2A3A50;margin-top:1px;">'+esc(dt)+(hasCorrection?' · <span style="color:#22D3EE">correction ✓</span>':'')+'</div>'+
+    '</div>';
+  });
+  list.innerHTML = html;
+}
+
+function selectFlag(id) {
+  selectedFlagId = id;
+  renderFlagsList();
+  var f = flagsData.find(function(x){ return x.id===id; });
+  if (!f) return;
+
+  var detail = document.getElementById('flag-detail');
+  var statusColor  = FLAG_STATUS_COLORS[f.status] || '#3A5A70';
+  var typeLabel    = FLAG_TYPE_LABELS[f.flag_type] || f.flag_type;
+  var domainLabel  = f.domain_hint ? (DOMAIN_INFO[f.domain_hint] ? DOMAIN_INFO[f.domain_hint].label : f.domain_hint) : 'Unknown domain';
+  var dt = f.created_at ? new Date(f.created_at).toLocaleString() : '';
+
+  var html = '<div class="anim">';
+
+  /* Header */
+  html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid #0F2040;">'+
+    '<div style="width:10px;height:10px;border-radius:50%;background:'+(f.persona_color||'#3A5A70')+';flex-shrink:0;"></div>'+
+    '<div style="flex:1;">'+
+      '<div style="font-size:14px;font-weight:600;color:#E2E8F0;">'+esc(f.persona_name||f.persona_id)+'</div>'+
+      '<div style="font-size:10.5px;color:#3A5A70;margin-top:2px;">'+esc(typeLabel)+' · '+esc(domainLabel)+' · '+esc(dt)+'</div>'+
+    '</div>'+
+    '<div style="font-size:10px;font-weight:600;color:'+statusColor+';background:'+statusColor+'22;border:1px solid '+statusColor+'44;border-radius:4px;padding:2px 8px;">'+esc(f.status.replace(/_/g,' '))+'</div>'+
+  '</div>';
+
+  /* Question */
+  html += '<div style="margin-bottom:12px;">'+
+    '<div class="lbl" style="margin-bottom:5px;">Question asked</div>'+
+    '<div style="background:#040710;border-radius:6px;padding:10px 12px;font-size:12.5px;color:#64748B;line-height:1.6;font-style:italic;">'+esc(f.question_text||'(not captured)')+'</div>'+
+  '</div>';
+
+  /* Wrong response */
+  html += '<div style="margin-bottom:12px;">'+
+    '<div class="lbl" style="margin-bottom:5px;color:#EF4444;">⚑ Jumo said this (flagged as wrong)</div>'+
+    '<div style="background:#0A1628;border:1px solid #0F2040;border-left:3px solid #EF4444;border-radius:6px;padding:10px 12px;font-size:12.5px;color:#CBD5E1;line-height:1.65;white-space:pre-wrap;">'+esc(f.response_text)+'</div>'+
+  '</div>';
+
+  /* Admin notes */
+  if (f.admin_notes) {
+    html += '<div style="margin-bottom:12px;">'+
+      '<div class="lbl" style="margin-bottom:5px;">Admin notes</div>'+
+      '<div style="font-size:12px;color:#94A3B8;line-height:1.6;">'+esc(f.admin_notes)+'</div>'+
+    '</div>';
+  }
+
+  /* Partner correction */
+  if (f.partner_correction) {
+    html += '<div style="margin-bottom:12px;background:#022C22;border:1px solid #065F46;border-radius:8px;padding:12px 14px;">'+
+      '<div class="lbl" style="margin-bottom:6px;color:#34D399;">✓ Partner correction</div>'+
+      '<div style="font-size:13px;color:#6EE7B7;line-height:1.7;white-space:pre-wrap;">'+esc(f.partner_correction)+'</div>'+
+    '</div>';
+  }
+
+  /* Resolution actions */
+  html += '<div style="background:#070D18;border:1px solid #0F2040;border-radius:8px;padding:14px;margin-bottom:12px;">'+
+    '<div class="lbl" style="margin-bottom:10px;">Resolution — where does this fix go?</div>'+
+    '<div style="display:flex;flex-direction:column;gap:8px;">';
+
+  if (f.domain_hint && f.status !== 'resolved') {
+    html += '<button class="btn btn-success" onclick="applyFlagToPersona(\''+esc(f.id)+'\',\''+esc(f.persona_id)+'\',\''+esc(f.domain_hint)+'\')" style="text-align:left;padding:10px 12px;">'+
+      '✎ Open '+esc(domainLabel)+' domain for '+esc(f.persona_name||f.persona_id)+'<br>'+
+      '<span style="font-size:10px;font-weight:400;opacity:.7;">Navigate to persona editor with this domain expanded</span>'+
+    '</button>';
+  }
+
+  html += '<button class="btn" onclick="downloadCorpusSnippet(\''+esc(f.id)+'\')" style="text-align:left;padding:10px 12px;">'+
+    '⬇ Download corpus snippet<br>'+
+    '<span style="font-size:10px;font-weight:400;opacity:.7;">Export as .md ready to append to /corpus/master-corpus.md</span>'+
+  '</button>';
+
+  if (f.status !== 'resolved') {
+    html += '<button class="btn" onclick="resolveFlag(\''+esc(f.id)+'\')" style="text-align:left;padding:10px 12px;color:#34D399;border-color:#065F46;">'+
+      '✓ Mark as resolved<br>'+
+      '<span style="font-size:10px;font-weight:400;opacity:.7;">Confirm you\'ve applied the correction somewhere</span>'+
+    '</button>';
+  }
+
+  if (f.status === 'open') {
+    html += '<button class="btn" onclick="sendFlagToPartner(\''+esc(f.id)+'\')" style="text-align:left;padding:10px 12px;">'+
+      '↗ Send to partner now<br>'+
+      '<span style="font-size:10px;font-weight:400;opacity:.7;">Add to partner validation queue</span>'+
+    '</button>';
+  }
+
+  html += '</div></div>';
+  html += '</div>';
+  detail.innerHTML = html;
+}
+
+function applyFlagToPersona(flagId, personaId, domainHint) {
+  /* Navigate to Personas tab, select persona, open the relevant domain */
+  showTab('personas');
+  setTimeout(async function() {
+    await selectPersona(personaId);
+    setTimeout(function() {
+      /* Open the relevant domain section */
+      var body = document.getElementById('dom-'+domainHint);
+      var chev = document.getElementById('chev-'+domainHint);
+      if (body && body.classList.contains('hidden')) {
+        body.classList.remove('hidden');
+        if (chev) chev.classList.add('open');
+      }
+      /* Scroll the domain into view */
+      var block = document.getElementById('block-'+domainHint);
+      if (block) block.scrollIntoView({behavior:'smooth', block:'center'});
+      showToast('Edit the '+domainHint+' domain — apply the correction, then save');
+    }, 400);
+  }, 200);
+}
+
+function downloadCorpusSnippet(flagId) {
+  var f = flagsData.find(function(x){ return x.id===flagId; });
+  if (!f) return;
+  var dt = new Date().toISOString().slice(0,10);
+  var correction = f.partner_correction || f.admin_notes || '[correction pending]';
+  var domain = f.domain_hint || 'general';
+
+  var snippet = [
+    '---',
+    'persona: '+( f.persona_name || f.persona_id),
+    'domain: '+domain,
+    'source: flag_correction',
+    'date: '+dt,
+    'flag_id: '+f.id,
+    '---',
+    '',
+    '## '+( f.persona_name||f.persona_id)+' — '+(DOMAIN_INFO[domain]?DOMAIN_INFO[domain].label:domain),
+    '',
+    '**Original wrong response flagged:**',
+    '> Q: '+(f.question_text||'(not captured)'),
+    '> A (wrong): '+f.response_text,
+    '',
+    '**Correct information:**',
+    correction,
+    '',
+  ].join('\n');
+
+  var blob = new Blob([snippet], {type:'text/markdown'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'corpus-snippet-'+(f.persona_id||'unknown')+'-'+dt+'.md';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Downloaded — append to /corpus/master-corpus.md and commit');
+}
+
+async function resolveFlag(flagId) {
+  try {
+    await fetch('/api/flags/'+encodeURIComponent(flagId)+'?token='+encodeURIComponent(currentToken), {
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({status:'resolved'})
+    });
+    flagsData = flagsData.map(function(f){ return f.id===flagId ? Object.assign({},f,{status:'resolved'}) : f; });
+    renderFlagsList();
+    selectFlag(flagId);
+    updateFlagsBadge();
+    showToast('Flag resolved ✓');
+  } catch(e) { showToast('Could not update — check connection'); }
+}
+
+async function sendFlagToPartner(flagId) {
+  var f = flagsData.find(function(x){ return x.id===flagId; });
+  if (!f) return;
+  /* Re-submit with send_to_partner: true */
+  try {
+    await fetch('/api/flags', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-access-token':currentToken},
+      body:JSON.stringify(Object.assign({},f,{id:flagId+'-resend-'+Date.now(),send_to_partner:true}))
+    });
+    await fetch('/api/flags/'+encodeURIComponent(flagId)+'?token='+encodeURIComponent(currentToken), {
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({status:'sent_to_partner'})
+    });
+    flagsData = flagsData.map(function(f2){ return f2.id===flagId ? Object.assign({},f2,{status:'sent_to_partner'}) : f2; });
+    renderFlagsList(); selectFlag(flagId); showToast('Sent to partner ↗');
+  } catch(e) { showToast('Could not send — check connection'); }
+}
 
 /* ════════════════════════════
    PROMPT PREVIEW + EXPORT
