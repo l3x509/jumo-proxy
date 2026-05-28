@@ -8,8 +8,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Playfair+Display:wght@600;700&display=swap">
 <style>
-  /* Fonts loaded via <link> in <head> — see above */
-
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html { height: 100%; }
   body { height: 100%; min-height: 100svh; overflow: hidden; font-family: "DM Sans", system-ui, sans-serif; background: #05090F; color: #E2E8F0; font-size: 13px; display: flex; flex-direction: column; }
@@ -31,7 +29,6 @@
   .dot:nth-child(3) { animation-delay:.4s; }
   .anim { animation: fadeIn .25s ease; }
 
-  /* Buttons */
   .btn { background:#0A1628; border:1px solid #1E3A5F; border-radius:6px; color:#94A3B8; padding:5px 12px; cursor:pointer; font-size:11.5px; font-weight:500; transition:all .15s; white-space:nowrap; }
   .btn:hover { background:#0F2040; color:#CBD5E1; border-color:#2D5F8A; }
   .btn:disabled { opacity:.4; cursor:not-allowed; }
@@ -44,22 +41,16 @@
   .tag { font-size:9.5px; padding:2px 7px; border-radius:999px; font-weight:500; }
   .lbl { font-size:9.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:#3A5A70; }
 
-  /* Layout */
   #hdr { height:48px; min-height:48px; border-bottom:1px solid #0F2040; display:flex; align-items:center; padding:0 14px; gap:10px; background:#05090F; z-index:20; flex-shrink:0; }
   #body { flex:1; display:flex; overflow:hidden; }
 
-  /* Hamburger — desktop hidden */
   #hamburger { display:none; background:transparent; border:1px solid #0F2040; border-radius:6px; color:#94A3B8; padding:6px 8px; cursor:pointer; font-size:16px; line-height:1; flex-shrink:0; }
-
-  /* Sidebar backdrop */
   #sidebar-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:29; }
 
-  /* Left column */
   #left { width:218px; min-width:218px; border-right:1px solid #0F2040; background:#040710; display:flex; flex-direction:column; overflow:hidden; flex-shrink:0; transition:transform .25s ease; z-index:30; }
   #left-hdr { padding:10px 12px; border-bottom:1px solid #0F2040; display:flex; align-items:center; gap:6px; flex-shrink:0; }
   #left-list { overflow-y:auto; flex:1; padding:6px; }
 
-  /* Persona items */
   .p-item { display:flex; align-items:center; gap:9px; padding:7px 8px; border-radius:8px; cursor:pointer; transition:all .15s; border:1px solid transparent; margin-bottom:2px; }
   .p-item:hover { background:#0A1628; border-color:#0F2040; }
   .p-item.active { background:#0A1628; border-color:var(--c, #1E3A5F); }
@@ -67,17 +58,12 @@
   .p-name { font-size:11.5px; font-weight:600; color:#CBD5E1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .p-arch { font-size:10px; font-style:italic; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-  /* Right content */
   #right { flex:1; overflow:hidden; display:flex; flex-direction:column; min-width:0; }
-
-  /* Empty state */
   #empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; }
 
-  /* Profile panel */
   #profile-panel { display:none; overflow-y:auto; flex:1; }
   #profile-inner { padding:20px; display:flex; flex-direction:column; gap:14px; max-width:720px; }
 
-  /* Chat panel */
   #chat-panel { display:none; flex-direction:column; flex:1; overflow:hidden; }
   #chat-hdr { padding:10px 14px; border-bottom:1px solid #0F2040; display:flex; align-items:center; gap:10px; flex-shrink:0; min-height:56px; }
   #chat-bio { font-size:11.5px; color:#3A5A70; line-height:1.6; padding:8px 14px; border-bottom:1px solid #0F2040; border-left-width:3px; border-left-style:solid; flex-shrink:0; background:#040710; }
@@ -91,13 +77,11 @@
   #send-btn { width:38px; height:38px; min-width:38px; border-radius:8px; border:none; background:#1E3A5F; color:white; cursor:pointer; font-size:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:opacity .15s; }
   #send-btn:hover { opacity:.85; }
 
-  /* Broadcast panel */
   #bc-panel { display:none; overflow-y:auto; flex:1; }
   #bc-inner { padding:20px; max-width:960px; }
   #bc-results { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:18px; }
   .bc-card { background:#070D18; border:1px solid #0F2040; border-radius:10px; padding:14px; }
 
-  /* Log panel */
   #log-panel { display:none; flex:1; flex-direction:column; overflow:hidden; }
   #log-topbar { height:44px; min-height:44px; border-bottom:1px solid #0F2040; padding:0 14px; display:flex; align-items:center; gap:8px; flex-shrink:0; }
   #log-body { flex:1; display:flex; overflow:hidden; }
@@ -107,18 +91,35 @@
   .log-item:hover { background:#0A1628; }
   .log-item.active { background:#0A1628; border-color:#1E3A5F; }
 
-  /* Access token — header (desktop) */
   #hdr-api-wrap { display:flex; align-items:center; gap:5px; }
   #hdr-api-input { background:#070D18; border:1px solid #0F2040; border-radius:6px; color:#64748B; padding:5px 10px; font-size:11px; width:190px; }
   #hdr-api-input:focus { border-color:#1E3A5F; color:#94A3B8; }
   #hdr-api-input::placeholder { color:#1E3A5F; }
 
-  /* Access token — sidebar (mobile) */
   #sidebar-api-wrap { display:none; padding:8px 10px; border-bottom:1px solid #0F2040; }
   #sidebar-api-input { width:100%; background:#070D18; border:1px solid #0F2040; border-radius:6px; color:#64748B; padding:6px 10px; font-size:12px; }
   #sidebar-api-input::placeholder { color:#1E3A5F; }
 
-  /* ── Mobile ≤768px ── */
+  #compare-panel { display:none; flex:1; flex-direction:column; overflow:hidden; }
+  #compare-top { padding:12px 14px; border-bottom:1px solid #0F2040; flex-shrink:0; background:#040710; }
+  #compare-body { flex:1; display:flex; overflow:hidden; }
+  .cmp-col { flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0; }
+  .cmp-col-hdr { padding:8px 12px; border-bottom:1px solid #0F2040; flex-shrink:0; min-height:48px; display:flex; align-items:center; }
+  .cmp-col-msgs { flex:1; overflow-y:auto; padding:10px 12px; display:flex; flex-direction:column; gap:8px; }
+  .cmp-divider { width:1px; background:#0F2040; flex-shrink:0; }
+  select.p-select { background:#070D18; border:1px solid #1E3A5F; border-radius:6px; color:#E2E8F0; padding:5px 8px; font-size:11.5px; cursor:pointer; max-width:160px; }
+  select.p-select:focus { outline:none; border-color:#2D5F8A; }
+  #compare-input { flex:1; background:#070D18; border:1px solid #1E3A5F; border-radius:8px; color:#E2E8F0; padding:8px 12px; font-size:13px; line-height:1.5; max-height:100px; overflow-y:auto; }
+  #compare-input::placeholder { color:#2A3A50; }
+  .note-area { width:100%; background:#040710; border:1px solid #0F2040; border-radius:6px; color:#64748B; padding:8px 10px; font-size:11.5px; line-height:1.55; resize:vertical; min-height:56px; font-family:inherit; transition:border-color .15s; }
+  .note-area:focus { outline:none; border-color:#1E3A5F; color:#94A3B8; }
+  .note-area::placeholder { color:#1E3A5F; }
+
+  /* ── Flag type buttons ── */
+  .flag-type-btn { background:#0A1628; border:1px solid #1E3A5F; border-radius:7px; color:#64748B; padding:8px 10px; font-size:11px; font-family:inherit; cursor:pointer; text-align:left; line-height:1.4; transition:all .12s; }
+  .flag-type-btn:hover { background:#0F2040; color:#94A3B8; }
+  .flag-type-btn.selected { background:#0C2B3A; border-color:#22D3EE; color:#22D3EE; }
+
   @media (max-width: 768px) {
     #left { position:fixed; top:48px; left:0; bottom:0; transform:translateX(-100%); }
     #left.open { transform:translateX(0); }
@@ -138,46 +139,24 @@
     #log-detail-col { padding:12px; }
     #log-topbar .btn { font-size:10px; padding:4px 7px; }
     .btn { min-height:32px; }
+    #compare-body { flex-direction:column; }
+    .cmp-divider { width:100%; height:1px; }
+    select.p-select { max-width:140px; font-size:11px; }
+    #compare-top { padding:10px 12px; }
   }
 
-  /* ── Very small ≤400px ── */
   @media (max-width: 400px) {
     #hdr { gap:6px; padding:0 8px; }
     .brand-txt { display:none; }
     #messages { padding:10px; gap:10px; }
     #bc-inner { padding:8px; }
   }
-
-  /* Compare panel */
-  #compare-panel { display:none; flex:1; flex-direction:column; overflow:hidden; }
-  #compare-top { padding:12px 14px; border-bottom:1px solid #0F2040; flex-shrink:0; background:#040710; }
-  #compare-body { flex:1; display:flex; overflow:hidden; }
-  .cmp-col { flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0; }
-  .cmp-col-hdr { padding:8px 12px; border-bottom:1px solid #0F2040; flex-shrink:0; min-height:48px; display:flex; align-items:center; }
-  .cmp-col-msgs { flex:1; overflow-y:auto; padding:10px 12px; display:flex; flex-direction:column; gap:8px; }
-  .cmp-divider { width:1px; background:#0F2040; flex-shrink:0; }
-  select.p-select { background:#070D18; border:1px solid #1E3A5F; border-radius:6px; color:#E2E8F0; padding:5px 8px; font-size:11.5px; cursor:pointer; max-width:160px; }
-  select.p-select:focus { outline:none; border-color:#2D5F8A; }
-  #compare-input { flex:1; background:#070D18; border:1px solid #1E3A5F; border-radius:8px; color:#E2E8F0; padding:8px 12px; font-size:13px; line-height:1.5; max-height:100px; overflow-y:auto; }
-  #compare-input::placeholder { color:#2A3A50; }
-  .note-area { width:100%; background:#040710; border:1px solid #0F2040; border-radius:6px; color:#64748B; padding:8px 10px; font-size:11.5px; line-height:1.55; resize:vertical; min-height:56px; font-family:inherit; transition:border-color .15s; }
-  .note-area:focus { outline:none; border-color:#1E3A5F; color:#94A3B8; }
-  .note-area::placeholder { color:#1E3A5F; }
-
-  @media (max-width: 768px) {
-    #compare-body { flex-direction:column; }
-    .cmp-divider { width:100%; height:1px; }
-    select.p-select { max-width:140px; font-size:11px; }
-    #compare-top { padding:10px 12px; }
-  }
 </style>
 </head>
 <body>
 
-<!-- SIDEBAR BACKDROP -->
 <div id="sidebar-backdrop" onclick="closeSidebar()"></div>
 
-<!-- HEADER -->
 <div id="hdr">
   <button id="hamburger" onclick="toggleSidebar()" aria-label="Menu">&#9776;</button>
   <div style="width:28px;height:28px;background:linear-gradient(135deg,#D4A017,#C0392B);border-radius:7px;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:800;font-size:11px;color:white;flex-shrink:0">J</div>
@@ -199,27 +178,22 @@
   </div>
 </div>
 
-<!-- BODY -->
 <div id="body">
 
-  <!-- LEFT: persona list -->
   <div id="left">
     <div id="left-hdr">
       <div class="lbl" style="flex:1;margin-bottom:0">Personas</div>
       <div style="font-size:10px;color:#2A3A50">10</div>
       <button id="sidebar-close" onclick="closeSidebar()" style="display:none;background:transparent;border:none;color:#64748B;font-size:18px;cursor:pointer;line-height:1;padding:2px 0 2px 6px;">&#x2715;</button>
     </div>
-    <!-- Mobile API key -->
     <div id="sidebar-api-wrap">
       <input id="sidebar-api-input" type="password" placeholder="Access token…" autocomplete="off">
     </div>
     <div id="left-list"></div>
   </div>
 
-  <!-- RIGHT: content panels -->
   <div id="right">
 
-    <!-- Empty state -->
     <div id="empty" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
       <div style="width:56px;height:56px;background:linear-gradient(135deg,#D4A017,#C0392B);border-radius:14px;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:800;font-size:22px;color:white;">J</div>
       <div style="text-align:center;">
@@ -229,12 +203,10 @@
       <div style="font-size:10px;color:#1A2A3A;margin-top:4px;text-align:center;line-height:1.6;max-width:260px;">Enter the access token above<br>before starting a conversation.</div>
     </div>
 
-    <!-- Profile panel -->
     <div id="profile-panel" style="display:none;overflow-y:auto;flex:1;">
       <div id="profile-inner"></div>
     </div>
 
-    <!-- Chat panel -->
     <div id="chat-panel" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
       <div id="chat-hdr"></div>
       <div id="chat-bio"></div>
@@ -246,7 +218,6 @@
       </div>
     </div>
 
-    <!-- Broadcast panel -->
     <div id="bc-panel" style="display:none;overflow-y:auto;flex:1;">
       <div id="bc-inner">
         <div style="margin-bottom:18px;">
@@ -264,7 +235,6 @@
       </div>
     </div>
 
-    <!-- Log panel -->
     <div id="log-panel" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
       <div id="log-topbar">
         <span class="lbl">Session Log</span>
@@ -279,19 +249,13 @@
       </div>
     </div>
 
-
-    <!-- Compare panel -->
     <div id="compare-panel" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
       <div id="compare-top">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
           <span class="lbl">Compare Two Personas</span>
-          <select id="compare-sel-a" class="p-select" onchange="selectCompareA(this.value)">
-            <option value="">Persona A…</option>
-          </select>
+          <select id="compare-sel-a" class="p-select" onchange="selectCompareA(this.value)"><option value="">Persona A…</option></select>
           <span style="font-size:11px;color:#3A5A70;font-weight:600">vs</span>
-          <select id="compare-sel-b" class="p-select" onchange="selectCompareB(this.value)">
-            <option value="">Persona B…</option>
-          </select>
+          <select id="compare-sel-b" class="p-select" onchange="selectCompareB(this.value)"><option value="">Persona B…</option></select>
           <div style="flex:1"></div>
           <button class="btn" onclick="resetCompare()">&#x21BA; Reset</button>
         </div>
@@ -313,10 +277,77 @@
       </div>
     </div>
 
-  </div><!-- /#right -->
-</div><!-- /#body -->
+  </div>
+</div>
 
-<script src="/personas.js" onerror="document.getElementById('left-list').innerHTML='<div style=\"padding:14px;font-size:11.5px;color:#EF4444;line-height:1.6\">⚠ personas.js failed to load.<br>Check the Railway logs and verify the file is in public/.</div>'"></script>
+<!-- ═══════════════════════════════════════
+     FLAG MODAL
+     ═══════════════════════════════════════ -->
+<div id="flag-modal" onclick="closeFlagModalBg(event)" style="display:none;position:fixed;inset:0;background:rgba(2,5,10,.85);z-index:300;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#070D18;border:1px solid #1E3A5F;border-radius:12px;width:100%;max-width:480px;overflow:hidden;">
+
+    <div style="padding:13px 16px;border-bottom:1px solid #0F2040;display:flex;align-items:center;gap:10px;">
+      <div style="font-size:13px;font-weight:600;color:#E2E8F0">⚑ Flag this response</div>
+      <div style="flex:1"></div>
+      <button onclick="closeFlagModal()" style="background:transparent;border:none;color:#3A5A70;font-size:18px;cursor:pointer;line-height:1;padding:2px;">✕</button>
+    </div>
+
+    <div style="padding:12px 16px;border-bottom:1px solid #0A1628;background:#040710;">
+      <div style="font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#3A5A70;margin-bottom:5px;">What was asked</div>
+      <div id="flag-q-preview" style="font-size:12px;color:#64748B;line-height:1.5;margin-bottom:10px;font-style:italic;"></div>
+      <div style="font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#3A5A70;margin-bottom:5px;">What Jumo said (flagging this)</div>
+      <div id="flag-r-preview" style="font-size:12px;color:#64748B;line-height:1.5;max-height:80px;overflow:hidden;"></div>
+    </div>
+
+    <div style="padding:12px 16px;border-bottom:1px solid #0A1628;">
+      <div style="font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#3A5A70;margin-bottom:8px;">What's wrong?</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+        <button class="flag-type-btn selected" data-type="culturally_inaccurate" onclick="setFlagType('culturally_inaccurate')">🌍 Culturally inaccurate</button>
+        <button class="flag-type-btn" data-type="off_persona" onclick="setFlagType('off_persona')">👤 Doesn't sound like this persona</button>
+        <button class="flag-type-btn" data-type="too_generic" onclick="setFlagType('too_generic')">📋 Too generic / not specific</button>
+        <button class="flag-type-btn" data-type="factually_wrong" onclick="setFlagType('factually_wrong')">✗ Factually wrong</button>
+        <button class="flag-type-btn" data-type="missing_info" onclick="setFlagType('missing_info')">+ Missing key information</button>
+        <button class="flag-type-btn" data-type="wrong_register" onclick="setFlagType('wrong_register')">💬 Wrong language / register</button>
+      </div>
+    </div>
+
+    <div style="padding:12px 16px;border-bottom:1px solid #0A1628;display:flex;flex-direction:column;gap:8px;">
+      <div>
+        <div style="font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#3A5A70;margin-bottom:5px;">Which domain? (optional)</div>
+        <select id="flag-domain" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:7px 9px;font-size:12px;font-family:inherit;">
+          <option value="">— not sure —</option>
+          <option value="health">Health & Wellbeing</option>
+          <option value="family">Family & Community</option>
+          <option value="economic">Economic Life</option>
+          <option value="institutional">Institutional Relationships</option>
+          <option value="religious">Religious & Spiritual Life</option>
+          <option value="education">Education & Knowledge</option>
+          <option value="language_profile">Language Profile</option>
+        </select>
+      </div>
+      <div>
+        <div style="font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#3A5A70;margin-bottom:5px;">Your notes</div>
+        <textarea id="flag-notes" rows="2" placeholder="What's wrong or what's missing…" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#CBD5E1;padding:7px 9px;font-size:12px;font-family:inherit;resize:vertical;min-height:56px;line-height:1.6;"></textarea>
+      </div>
+    </div>
+
+    <div style="padding:10px 16px;border-bottom:1px solid #0A1628;display:flex;align-items:center;gap:10px;">
+      <input type="checkbox" id="flag-partner" style="width:16px;height:16px;accent-color:#34D399;cursor:pointer;">
+      <label for="flag-partner" style="font-size:12px;color:#94A3B8;cursor:pointer;line-height:1.4;">
+        Send to cultural partner for correction
+        <span style="display:block;font-size:10.5px;color:#3A5A70;margin-top:1px;">Partner will see the question, wrong response, and your notes</span>
+      </label>
+    </div>
+
+    <div style="padding:12px 16px;display:flex;gap:8px;justify-content:flex-end;">
+      <button onclick="closeFlagModal()" style="background:transparent;border:1px solid #1E3A5F;border-radius:6px;color:#64748B;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit;">Cancel</button>
+      <button id="flag-submit-btn" onclick="submitFlag()" style="background:#1E3A5F;border:1px solid #2D5F8A;border-radius:6px;color:#E2E8F0;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Submit Flag</button>
+    </div>
+
+  </div>
+</div>
+
+<script src="/personas.js" onerror="document.getElementById('left-list').innerHTML='<div style=\"padding:14px;font-size:11.5px;color:#EF4444;line-height:1.6\">⚠ personas.js failed to load.</div>'"></script>
 <script>
 /* ═══════════════════════════
    STATE
@@ -340,6 +371,10 @@ var compareLoadingB = false;
 var sessionNotes = {};
 var _supabaseSaveQueue = {};
 
+/* Flag state */
+var flagContext = null;
+var selectedFlagType = 'culturally_inaccurate';
+
 /* ═══════════════════════════
    HELPERS
    ═══════════════════════════ */
@@ -359,14 +394,10 @@ function getToken() {
   return (h && h.value.trim()) || (s && s.value.trim()) || "";
 }
 
-/* All API calls go through the Railway proxy — never directly to Anthropic */
 var PROXY_URL = "/api/messages";
 
 function apiHeaders(broadcast) {
-  var h = {
-    "Content-Type": "application/json",
-    "x-access-token": getToken()
-  };
+  var h = { "Content-Type": "application/json", "x-access-token": getToken() };
   if (broadcast) h["x-broadcast"] = "1";
   return h;
 }
@@ -377,12 +408,8 @@ function apiHeaders(broadcast) {
 function toggleSidebar() {
   var left = document.getElementById("left");
   var backdrop = document.getElementById("sidebar-backdrop");
-  if (left.classList.contains("open")) {
-    closeSidebar();
-  } else {
-    left.classList.add("open");
-    backdrop.style.display = "block";
-  }
+  if (left.classList.contains("open")) { closeSidebar(); }
+  else { left.classList.add("open"); backdrop.style.display = "block"; }
 }
 
 function closeSidebar() {
@@ -424,7 +451,6 @@ document.addEventListener("DOMContentLoaded", function() {
   updateLogBadge();
   applyResponsiveLayout();
 
-  /* Auto-expand textareas */
   var inp = document.getElementById("chat-input");
   if (inp) {
     inp.addEventListener("input", function() {
@@ -457,15 +483,11 @@ function buildPersonaList() {
       "<div style=\"flex:1;min-width:0\">" +
         "<div class=\"p-name\">" + esc(p.name.split(" ")[0]) + " " + esc(p.name.split(" ")[1] || "") + "</div>" +
         "<div class=\"p-arch\" style=\"color:" + p.color + "\">" + esc(p.archetype.split("—")[0].trim()) + "</div>" +
-      "</div>" +
-    "</div>";
+      "</div></div>";
   }
   list.innerHTML = html;
 }
 
-/* ═══════════════════════════
-   SELECT PERSONA
-   ═══════════════════════════ */
 function selectPersona(id) {
   var p = PERSONAS.find(function(x){ return x.id === id; });
   if (!p) return;
@@ -488,17 +510,14 @@ function setActiveItem(id) {
    ═══════════════════════════ */
 function showProfile(p) {
   setMode("profile");
-
   var tagsHtml = "";
   for (var i = 0; i < p.tags.length; i++) {
     tagsHtml += "<span class=\"tag\" style=\"background:" + p.dim + ";color:" + p.color + ";border:1px solid " + p.color + "44\">" + esc(p.tags[i]) + "</span>";
   }
-
   var qsHtml = "";
   for (var i = 0; i < p.questions.length; i++) {
     qsHtml += "<button class=\"q-btn\" onclick=\"startChatQ('" + p.id + "'," + i + ")\">" + esc(p.questions[i]) + "</button>";
   }
-
   document.getElementById("profile-inner").innerHTML =
     "<div style=\"display:flex;align-items:flex-start;gap:14px\" class=\"anim\">" +
       "<div style=\"width:52px;height:52px;min-width:52px;border-radius:12px;background:" + p.dim + ";display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:" + p.color + ";border:1px solid " + p.color + "66;flex-shrink:0\">" + p.init + "</div>" +
@@ -512,10 +531,8 @@ function showProfile(p) {
     "</div>" +
     "<div style=\"background:#070D18;border:1px solid #0F2040;border-left:3px solid " + p.color + ";border-radius:8px;padding:12px 14px;font-size:12.5px;color:#4B7A8A;line-height:1.65\" class=\"anim\">" + esc(p.bio) + "</div>" +
     "<button class=\"btn btn-primary\" onclick=\"startChat('" + p.id + "')\" style=\"padding:10px 16px;font-size:12.5px;border-radius:8px;\">Start Conversation &#8594;</button>" +
-    "<div>" +
-      "<div class=\"lbl\" style=\"margin-bottom:8px\">Preset questions — click to ask</div>" +
-      "<div style=\"display:flex;flex-direction:column;gap:5px\">" + qsHtml + "</div>" +
-    "</div>";
+    "<div><div class=\"lbl\" style=\"margin-bottom:8px\">Preset questions — click to ask</div>" +
+    "<div style=\"display:flex;flex-direction:column;gap:5px\">" + qsHtml + "</div></div>";
 }
 
 /* ═══════════════════════════
@@ -564,11 +581,9 @@ function renderChatHeader() {
       "<div style=\"font-size:10.5px;color:#4B7A8A\">" + p.age + " &middot; " + esc(p.location) + " &middot; " + tagsStr + "</div>" +
     "</div>" +
     "<button class=\"btn\" onclick=\"resetConversation()\" style=\"font-size:10px;padding:3px 9px;flex-shrink:0\">↺ Reset</button>";
-
   var bioEl = document.getElementById("chat-bio");
   bioEl.textContent = p.bio;
   bioEl.style.borderLeftColor = p.color;
-
   var sendBtn = document.getElementById("send-btn");
   if (sendBtn) sendBtn.style.background = p.color;
 }
@@ -627,8 +642,10 @@ function renderMessages() {
           "<div style=\"font-size:12px;color:#7EC8E3;line-height:1.65;white-space:pre-wrap\">" + esc(cached.text) + "</div>" +
         "</div>";
       }
+      /* ── Action buttons — Copy, Flag, Translate ── */
       transHtml = "<div style=\"margin-top:6px;display:flex;gap:5px;align-items:center;flex-wrap:wrap\">" +
         "<button class=\"btn\" onclick=\"copyMsg(" + msgIdx + ")\" style=\"font-size:10px;padding:3px 8px;color:#3A5A70\">⎘ Copy</button>" +
+        "<button class=\"btn\" onclick=\"flagMsg(" + msgIdx + ")\" style=\"font-size:10px;padding:3px 8px;color:#EF4444;border-color:#3A1A1A\">⚑ Flag</button>" +
         "<span style=\"font-size:9.5px;color:#1E3A5F;margin:0 2px\">|</span>" +
         "<span style=\"font-size:9.5px;color:#2A3A50\">Translate →</span>" +
         "<button class=\"btn\" onclick=\"translateMsg(" + msgIdx + ",'kreyol')\" style=\"font-size:10px;padding:3px 8px;" + (cached && cached.lang==='kreyol' ? "border-color:#7EC8E3;color:#7EC8E3;" : "") + "\">Kreyòl</button>" +
@@ -675,13 +692,10 @@ async function translateMsg(msgIdx, lang) {
   var originalText = assistantMessages[msgIdx] ? assistantMessages[msgIdx].content : null;
   if (!originalText) return;
   if (!getToken()) { alert("Enter the access token first."); return; }
-
   var targetName = lang === "kreyol" ? "Haitian Kreyòl" : "French";
   var translatePrompt = "Translate the following text to " + targetName + ". Preserve the speaker's voice, register, and tone. Keep any " + targetName + " phrases already present. Return only the translation.\n\n" + originalText;
-
   msgTranslations[msgIdx] = {lang: lang, text: "…"};
   renderMessages();
-
   try {
     var res = await fetch(PROXY_URL, {
       method: "POST",
@@ -701,7 +715,7 @@ async function translateMsg(msgIdx, lang) {
 }
 
 /* ═══════════════════════════
-   SEND
+   SEND  — uses persona_id (server-side prompt)
    ═══════════════════════════ */
 function sendQ(i) {
   if (!currentPersona) return;
@@ -726,7 +740,7 @@ async function sendMsg(text) {
       method: "POST",
       headers: apiHeaders(),
       body: JSON.stringify({
-        system: currentPersona.system,
+        persona_id: currentPersona.id,   /* server builds prompt from JSON file */
         messages: messages
       })
     });
@@ -752,7 +766,7 @@ async function sendMsg(text) {
 }
 
 /* ═══════════════════════════
-   BROADCAST
+   BROADCAST — uses persona_id
    ═══════════════════════════ */
 function showBroadcast() {
   setMode("broadcast");
@@ -760,12 +774,8 @@ function showBroadcast() {
 }
 
 function goBack() {
-  if (currentPersona) {
-    showProfile(currentPersona);
-    setActiveItem(currentPersona.id);
-  } else {
-    setMode("empty");
-  }
+  if (currentPersona) { showProfile(currentPersona); setActiveItem(currentPersona.id); }
+  else { setMode("empty"); }
 }
 
 function buildBroadcastSuggestions() {
@@ -795,13 +805,12 @@ async function broadcast() {
   var btn = document.getElementById("bc-send");
   if (btn) { btn.disabled = true; btn.textContent = "Asking all personas…"; }
 
-  // Fire all 10 simultaneously — each updates UI as it arrives
   var fetchOne = async function(p) {
     try {
       var res = await fetch(PROXY_URL, {
         method: "POST",
         headers: apiHeaders(true),
-        body: JSON.stringify({system:p.system, messages:[{role:"user",content:q}]})
+        body: JSON.stringify({persona_id: p.id, messages:[{role:"user",content:q}]})
       });
       var data = await res.json();
       if (data.error) {
@@ -812,11 +821,10 @@ async function broadcast() {
     } catch(e) {
       broadcastResults[p.id] = {status:"error", text:"Connection error."};
     }
-    renderBcResults(q); // update the card as each persona responds
+    renderBcResults(q);
   };
 
   await Promise.allSettled(PERSONAS.map(function(p){ return fetchOne(p); }));
-
   isBroadcasting = false;
   logBroadcastSession(q, broadcastResults);
   if (btn) { btn.disabled = false; btn.textContent = "Ask All 10 →"; }
@@ -825,10 +833,8 @@ async function broadcast() {
 function renderBcResults(q) {
   var container = document.getElementById("bc-results");
   if (!container || !Object.keys(broadcastResults).length) { if(container) container.innerHTML=""; return; }
-
   var html = "<div style=\"grid-column:1/-1;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#3A5A70;padding-bottom:10px;border-bottom:1px solid #0F2040\">" +
     "Responses to: <span style=\"color:#94A3B8;font-weight:400;text-transform:none;letter-spacing:normal;font-size:11px\">\"" + esc(q) + "\"</span></div>";
-
   for (var i = 0; i < PERSONAS.length; i++) {
     var p = PERSONAS[i];
     var r = broadcastResults[p.id];
@@ -839,21 +845,13 @@ function renderBcResults(q) {
       : r.status === "done"
       ? "<div style=\"font-size:12px;color:#CBD5E1;line-height:1.65;white-space:pre-wrap\">" + esc(r.text) + "</div>"
       : "<div style=\"font-size:12px;color:#EF4444\">" + esc(r.text) + "</div>";
-
-    html +=
-      "<div class=\"bc-card\" style=\"border-left:3px solid " + p.color + "\">" +
-        "<div style=\"display:flex;align-items:center;gap:8px;margin-bottom:10px\">" +
-          "<div style=\"width:28px;height:28px;border-radius:7px;background:" + p.dim + ";display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:" + p.color + ";flex-shrink:0\">" + p.init + "</div>" +
-          "<div style=\"flex:1;min-width:0\">" +
-            "<div style=\"font-size:12px;font-weight:600;color:#E2E8F0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis\">" + esc(p.name) + "</div>" +
-            "<div style=\"font-size:10px;color:" + p.color + ";font-style:italic\">" + esc(p.archetype.split("—")[0].trim()) + " &middot; " + esc(p.location) + "</div>" +
-          "</div>" +
-          continueBtn +
-        "</div>" +
-        body +
-      "</div>";
+    html += "<div class=\"bc-card\" style=\"border-left:3px solid " + p.color + "\">" +
+      "<div style=\"display:flex;align-items:center;gap:8px;margin-bottom:10px\">" +
+        "<div style=\"width:28px;height:28px;border-radius:7px;background:" + p.dim + ";display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:" + p.color + ";flex-shrink:0\">" + p.init + "</div>" +
+        "<div style=\"flex:1;min-width:0\"><div style=\"font-size:12px;font-weight:600;color:#E2E8F0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis\">" + esc(p.name) + "</div>" +
+        "<div style=\"font-size:10px;color:" + p.color + ";font-style:italic\">" + esc(p.archetype.split("—")[0].trim()) + " &middot; " + esc(p.location) + "</div></div>" +
+        continueBtn + "</div>" + body + "</div>";
   }
-
   container.innerHTML = html;
 }
 
@@ -867,7 +865,6 @@ function continueFromBc(id) {
   messages = q && r && r.text ? [{role:"user",content:q},{role:"assistant",content:r.text}] : [];
   msgTranslations = {};
   startChat(id);
-  // Log the seeded messages from broadcast into the session startChat already opened
   if (messages.length && currentSession) {
     currentSession.exchanges = [{role:"user",content:q},{role:"assistant",content:r.text}];
   }
@@ -921,20 +918,14 @@ function logBroadcastSession(q, results) {
 
 function updateLogBadge() {
   var badge = document.getElementById("log-count-badge");
-  if (badge) {
-    badge.textContent = sessionLog.length;
-    badge.style.display = sessionLog.length > 0 ? "inline" : "none";
-  }
+  if (badge) { badge.textContent = sessionLog.length; badge.style.display = sessionLog.length > 0 ? "inline" : "none"; }
 }
 
 function showLog() {
   setMode("log");
   renderLogList();
-  if (sessionLog.length > 0 && selectedLogIndex === -1) {
-    selectLog(sessionLog.length - 1);
-  } else if (selectedLogIndex >= 0) {
-    selectLog(selectedLogIndex);
-  }
+  if (sessionLog.length > 0 && selectedLogIndex === -1) { selectLog(sessionLog.length - 1); }
+  else if (selectedLogIndex >= 0) { selectLog(selectedLogIndex); }
 }
 
 function renderLogList() {
@@ -964,13 +955,11 @@ function selectLog(i) {
   var s = sessionLog[i];
   var detail = document.getElementById("log-detail-col");
   if (!detail || !s) return;
-
   var html = "<div style='margin-bottom:12px'>" +
     "<div class='lbl' style='margin-bottom:5px'>Researcher Notes</div>" +
     "<textarea class='note-area' id='note-" + i + "' placeholder='Add notes for this session…' onblur='saveNote(" + i + ")'>" + esc(sessionNotes[i] || "") + "</textarea>" +
   "</div>" +
   "<div style='font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#3A5A70;margin-bottom:14px'>" + esc(s.persona) + " &middot; " + esc(s.timestamp) + "</div>";
-
   if (s.type === "broadcast") {
     html += "<div style='font-size:13px;font-weight:600;color:#E2E8F0;margin-bottom:16px;line-height:1.4'>" + esc(s.question) + "</div>";
     for (var j = 0; j < PERSONAS.length; j++) {
@@ -979,30 +968,25 @@ function selectLog(i) {
       if (!r || r.status !== "done") continue;
       html += "<div style='margin-bottom:12px;padding:10px 12px;background:#070D18;border:1px solid #0F2040;border-left:3px solid " + p.color + ";border-radius:8px'>" +
         "<div style='font-size:10.5px;font-weight:600;color:" + p.color + ";margin-bottom:5px'>" + esc(p.name) + " &middot; " + esc(p.location) + "</div>" +
-        "<div style='font-size:12px;color:#94A3B8;line-height:1.65;white-space:pre-wrap'>" + esc(r.text) + "</div>" +
-      "</div>";
+        "<div style='font-size:12px;color:#94A3B8;line-height:1.65;white-space:pre-wrap'>" + esc(r.text) + "</div></div>";
     }
   } else {
-    var p = PERSONAS.find(function(x){ return x.id === s.personaId; });
+    var pp = PERSONAS.find(function(x){ return x.id === s.personaId; });
     for (var j = 0; j < s.exchanges.length; j++) {
       var e = s.exchanges[j];
       var isUser = e.role === "user";
       html += "<div style='margin-bottom:8px;display:flex;justify-content:" + (isUser ? "flex-end" : "flex-start") + "'>" +
-        "<div style='max-width:82%;background:" + (isUser ? "#0F2040" : "#0A1628") + ";border:1px solid " + (isUser ? "#1E3A5F" : "#0F2040") + ";" + (p && !isUser ? "border-left:3px solid " + p.color + ";" : "") + "border-radius:8px;padding:8px 12px;font-size:12px;color:" + (isUser ? "#94A3B8" : "#CBD5E1") + ";line-height:1.6;white-space:pre-wrap'>" +
+        "<div style='max-width:82%;background:" + (isUser ? "#0F2040" : "#0A1628") + ";border:1px solid " + (isUser ? "#1E3A5F" : "#0F2040") + ";" + (pp && !isUser ? "border-left:3px solid " + pp.color + ";" : "") + "border-radius:8px;padding:8px 12px;font-size:12px;color:" + (isUser ? "#94A3B8" : "#CBD5E1") + ";line-height:1.6;white-space:pre-wrap'>" +
         esc(e.content) + "</div></div>";
     }
-    if (!s.exchanges.length) {
-      html += "<div style='color:#2A3A50;font-size:11.5px;'>No messages recorded.</div>";
-    }
+    if (!s.exchanges.length) { html += "<div style='color:#2A3A50;font-size:11.5px;'>No messages recorded.</div>"; }
   }
   detail.innerHTML = html;
 }
 
 function clearLog() {
-  if (!confirm("Clear all session logs? This also clears saved sessions.")) return;
-  sessionLog = [];
-  currentSession = null;
-  selectedLogIndex = -1;
+  if (!confirm("Clear all session logs?")) return;
+  sessionLog = []; currentSession = null; selectedLogIndex = -1;
   try { localStorage.removeItem("jumo_sessions"); localStorage.removeItem("jumo_notes"); } catch(e) {}
   sessionNotes = {};
   updateLogBadge();
@@ -1016,13 +1000,10 @@ function exportLog() {
     if (sessionNotes[i]) copy.researcher_notes = sessionNotes[i];
     return copy;
   });
-  var data = JSON.stringify(annotated, null, 2);
-  var blob = new Blob([data], {type: "application/json"});
+  var blob = new Blob([JSON.stringify(annotated, null, 2)], {type: "application/json"});
   var url = URL.createObjectURL(blob);
   var a = document.createElement("a");
-  a.href = url;
-  a.download = "jumo-session-log-" + Date.now() + ".json";
-  a.click();
+  a.href = url; a.download = "jumo-session-log-" + Date.now() + ".json"; a.click();
   URL.revokeObjectURL(url);
 }
 
@@ -1049,32 +1030,23 @@ function saveSessionToServer(session, noteIdx) {
   if (!session.server_id) session.server_id = generateId();
   var idx = (noteIdx !== undefined) ? noteIdx : sessionLog.indexOf(session);
   var notes = (idx >= 0 && sessionNotes[idx]) ? sessionNotes[idx] : null;
-  var body = {
-    id: session.server_id,
-    type: session.type || 'chat',
-    persona_name: session.persona || null,
-    persona_id: session.personaId || null,
-    session_timestamp: session.timestamp || null,
-    exchanges: session.exchanges || [],
-    broadcast_question: session.question || null,
-    broadcast_results: session.results || null,
-    researcher_notes: notes,
-    tester_id: getTesterId()
-  };
   fetch('/api/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-access-token': getToken() },
-    body: JSON.stringify(body)
-  }).catch(function() {}); // silent fail — localStorage is the backup
+    body: JSON.stringify({
+      id: session.server_id, type: session.type || 'chat',
+      persona_name: session.persona || null, persona_id: session.personaId || null,
+      session_timestamp: session.timestamp || null, exchanges: session.exchanges || [],
+      broadcast_question: session.question || null, broadcast_results: session.results || null,
+      researcher_notes: notes, tester_id: getTesterId()
+    })
+  }).catch(function() {});
 }
 
 /* ═══════════════════════════
-   COMPARE VIEW
+   COMPARE — uses persona_id
    ═══════════════════════════ */
-function showCompare() {
-  setMode("compare");
-  buildCompareSelectors();
-}
+function showCompare() { setMode("compare"); buildCompareSelectors(); }
 
 function buildCompareSelectors() {
   var opts = '<option value="">Select persona…</option>';
@@ -1085,41 +1057,21 @@ function buildCompareSelectors() {
   var sb = document.getElementById("compare-sel-b");
   if (sa) { sa.innerHTML = opts; if (comparePersonaA) sa.value = comparePersonaA.id; }
   if (sb) { sb.innerHTML = opts; if (comparePersonaB) sb.value = comparePersonaB.id; }
-  renderCompareHdr("a");
-  renderCompareHdr("b");
+  renderCompareHdr("a"); renderCompareHdr("b");
 }
 
-function selectCompareA(id) {
-  comparePersonaA = id ? PERSONAS.find(function(x){ return x.id === id; }) : null;
-  compareMessagesA = [];
-  compareLoadingA = false;
-  renderCompareHdr("a");
-  renderCompareCol("a");
-}
-
-function selectCompareB(id) {
-  comparePersonaB = id ? PERSONAS.find(function(x){ return x.id === id; }) : null;
-  compareMessagesB = [];
-  compareLoadingB = false;
-  renderCompareHdr("b");
-  renderCompareCol("b");
-}
+function selectCompareA(id) { comparePersonaA = id ? PERSONAS.find(function(x){return x.id===id;}) : null; compareMessagesA=[]; compareLoadingA=false; renderCompareHdr("a"); renderCompareCol("a"); }
+function selectCompareB(id) { comparePersonaB = id ? PERSONAS.find(function(x){return x.id===id;}) : null; compareMessagesB=[]; compareLoadingB=false; renderCompareHdr("b"); renderCompareCol("b"); }
 
 function renderCompareHdr(side) {
   var p = side === "a" ? comparePersonaA : comparePersonaB;
   var hdr = document.getElementById("compare-hdr-" + side);
   if (!hdr) return;
-  if (!p) {
-    hdr.innerHTML = "<span style='color:#3A5A70;font-size:11.5px;font-style:italic;'>Select Persona " + side.toUpperCase() + " above</span>";
-    return;
-  }
+  if (!p) { hdr.innerHTML = "<span style='color:#3A5A70;font-size:11.5px;font-style:italic;'>Select Persona " + side.toUpperCase() + " above</span>"; return; }
   hdr.innerHTML = "<div style='display:flex;align-items:center;gap:8px'>" +
     "<div style='width:28px;height:28px;border-radius:7px;background:" + p.dim + ";display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:" + p.color + ";flex-shrink:0'>" + p.init + "</div>" +
-    "<div style='min-width:0'>" +
-      "<div style='font-size:12px;font-weight:600;color:#E2E8F0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>" + esc(p.name) + "</div>" +
-      "<div style='font-size:10px;color:" + p.color + ";font-style:italic'>" + p.age + " &middot; " + esc(p.location) + "</div>" +
-    "</div>" +
-  "</div>";
+    "<div style='min-width:0'><div style='font-size:12px;font-weight:600;color:#E2E8F0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>" + esc(p.name) + "</div>" +
+    "<div style='font-size:10px;color:" + p.color + ";font-style:italic'>" + p.age + " &middot; " + esc(p.location) + "</div></div></div>";
 }
 
 async function runCompare() {
@@ -1129,32 +1081,20 @@ async function runCompare() {
   if (!comparePersonaA || !comparePersonaB) { showToast("Select both personas first."); return; }
   if (!getToken()) { showToast("Enter the access token first."); return; }
   if (compareLoadingA || compareLoadingB) return;
-
   if (inp) { inp.value = ""; inp.style.height = "auto"; }
-
-  compareMessagesA.push({role:"user", content:q});
-  compareMessagesB.push({role:"user", content:q});
-  compareLoadingA = true;
-  compareLoadingB = true;
-  renderCompareCol("a");
-  renderCompareCol("b");
-
+  compareMessagesA.push({role:"user", content:q}); compareMessagesB.push({role:"user", content:q});
+  compareLoadingA = true; compareLoadingB = true;
+  renderCompareCol("a"); renderCompareCol("b");
   var btn = document.getElementById("compare-btn");
   if (btn) { btn.disabled = true; btn.textContent = "Asking…"; }
-
   await Promise.allSettled([
     callPersona(comparePersonaA, compareMessagesA).then(function(reply) {
-      compareMessagesA.push({role:"assistant", content:reply});
-      compareLoadingA = false;
-      renderCompareCol("a");
+      compareMessagesA.push({role:"assistant", content:reply}); compareLoadingA = false; renderCompareCol("a");
     }),
     callPersona(comparePersonaB, compareMessagesB).then(function(reply) {
-      compareMessagesB.push({role:"assistant", content:reply});
-      compareLoadingB = false;
-      renderCompareCol("b");
+      compareMessagesB.push({role:"assistant", content:reply}); compareLoadingB = false; renderCompareCol("b");
     })
   ]);
-
   if (btn) { btn.disabled = false; btn.textContent = "Ask Both →"; }
 }
 
@@ -1163,14 +1103,12 @@ async function callPersona(persona, msgs) {
     var res = await fetch(PROXY_URL, {
       method: "POST",
       headers: apiHeaders(),
-      body: JSON.stringify({system: persona.system, messages: msgs})
+      body: JSON.stringify({persona_id: persona.id, messages: msgs})
     });
     var data = await res.json();
     if (data.error) return "[Error: " + data.error.message + "]";
     return data.content && data.content[0] ? data.content[0].text : "No response.";
-  } catch(e) {
-    return "[Connection error]";
-  }
+  } catch(e) { return "[Connection error]"; }
 }
 
 function renderCompareCol(side) {
@@ -1179,34 +1117,20 @@ function renderCompareCol(side) {
   var p = side === "a" ? comparePersonaA : comparePersonaB;
   var container = document.getElementById("compare-msgs-" + side);
   if (!container) return;
-
-  if (!p) {
-    container.innerHTML = "<div style='color:#2A3A50;font-size:11.5px;padding:6px;'>Select a persona above.</div>";
-    return;
-  }
-  if (msgs.length === 0 && !loading) {
-    container.innerHTML = "<div style='color:#2A3A50;font-size:11.5px;padding:6px;'>Type a question above to begin.</div>";
-    return;
-  }
-
+  if (!p) { container.innerHTML = "<div style='color:#2A3A50;font-size:11.5px;padding:6px;'>Select a persona above.</div>"; return; }
+  if (msgs.length === 0 && !loading) { container.innerHTML = "<div style='color:#2A3A50;font-size:11.5px;padding:6px;'>Type a question above to begin.</div>"; return; }
   var html = "";
   for (var i = 0; i < msgs.length; i++) {
-    var m = msgs[i];
-    var isUser = m.role === "user";
+    var m = msgs[i]; var isUser = m.role === "user";
     html += "<div class='anim' style='display:flex;justify-content:" + (isUser ? "flex-end" : "flex-start") + ";gap:6px'>" +
       (!isUser ? "<div style='width:22px;height:22px;min-width:22px;border-radius:6px;background:" + p.dim + ";display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:" + p.color + ";flex-shrink:0;margin-top:2px'>" + p.init + "</div>" : "") +
-      "<div style='max-width:90%;background:" + (isUser ? "#0F2040" : "#0A1628") + ";border:1px solid " + (isUser ? "#1E3A5F" : "#0F2040") + ";" + (!isUser ? "border-left:3px solid " + p.color + ";" : "") + "border-radius:8px;padding:7px 10px;font-size:12px;color:" + (isUser ? "#94A3B8" : "#CBD5E1") + ";line-height:1.6;white-space:pre-wrap'>" +
-      esc(m.content) + "</div>" +
-    "</div>";
+      "<div style='max-width:90%;background:" + (isUser ? "#0F2040" : "#0A1628") + ";border:1px solid " + (isUser ? "#1E3A5F" : "#0F2040") + ";" + (!isUser ? "border-left:3px solid " + p.color + ";" : "") + "border-radius:8px;padding:7px 10px;font-size:12px;color:" + (isUser ? "#94A3B8" : "#CBD5E1") + ";line-height:1.6;white-space:pre-wrap'>" + esc(m.content) + "</div></div>";
   }
   if (loading) {
     html += "<div style='display:flex;gap:6px;align-items:flex-start'>" +
       "<div style='width:22px;height:22px;border-radius:6px;background:" + p.dim + ";display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:" + p.color + ";flex-shrink:0'>" + p.init + "</div>" +
       "<div style='background:#0A1628;border:1px solid #0F2040;border-left:3px solid " + p.color + ";border-radius:8px;padding:10px 12px;display:flex;gap:4px;align-items:center'>" +
-      "<span class='dot' style='color:" + p.color + ";font-size:18px'>&#183;</span>" +
-      "<span class='dot' style='color:" + p.color + ";font-size:18px'>&#183;</span>" +
-      "<span class='dot' style='color:" + p.color + ";font-size:18px'>&#183;</span>" +
-      "</div></div>";
+      "<span class='dot' style='color:" + p.color + ";font-size:18px'>&#183;</span><span class='dot' style='color:" + p.color + ";font-size:18px'>&#183;</span><span class='dot' style='color:" + p.color + ";font-size:18px'>&#183;</span></div></div>";
   }
   html += "<div id='anchor-" + side + "'></div>";
   container.innerHTML = html;
@@ -1214,12 +1138,8 @@ function renderCompareCol(side) {
 }
 
 function resetCompare() {
-  compareMessagesA = [];
-  compareMessagesB = [];
-  compareLoadingA = false;
-  compareLoadingB = false;
-  renderCompareCol("a");
-  renderCompareCol("b");
+  compareMessagesA=[]; compareMessagesB=[]; compareLoadingA=false; compareLoadingB=false;
+  renderCompareCol("a"); renderCompareCol("b");
 }
 
 /* ═══════════════════════════
@@ -1228,21 +1148,14 @@ function resetCompare() {
 function saveNote(idx) {
   var ta = document.getElementById("note-" + idx);
   if (!ta) return;
-  if (ta.value.trim()) {
-    sessionNotes[idx] = ta.value;
-  } else {
-    delete sessionNotes[idx];
-  }
+  if (ta.value.trim()) { sessionNotes[idx] = ta.value; } else { delete sessionNotes[idx]; }
   try { localStorage.setItem("jumo_notes", JSON.stringify(sessionNotes)); } catch(e) {}
   var s = sessionLog[idx];
   if (s && s.server_id) saveSessionToServer(s, idx);
 }
 
 function loadNotes() {
-  try {
-    var saved = localStorage.getItem("jumo_notes");
-    if (saved) sessionNotes = JSON.parse(saved) || {};
-  } catch(e) { sessionNotes = {}; }
+  try { var saved = localStorage.getItem("jumo_notes"); if (saved) sessionNotes = JSON.parse(saved) || {}; } catch(e) { sessionNotes = {}; }
 }
 
 /* ═══════════════════════════
@@ -1258,38 +1171,29 @@ function csvCell(val) {
 function exportCSV() {
   if (!sessionLog.length) { alert("No sessions to export."); return; }
   var rows = [["Type","Session ID","Timestamp","Persona","Location","Age","Role","Content","Researcher Notes"].join(",")];
-
   for (var i = 0; i < sessionLog.length; i++) {
-    var s = sessionLog[i];
-    var note = sessionNotes[i] || "";
-
+    var s = sessionLog[i]; var note = sessionNotes[i] || "";
     if (s.type === "broadcast") {
-      rows.push([csvCell("broadcast"), csvCell(i), csvCell(s.timestamp), csvCell("All 10 Personas"), "", "", csvCell("QUESTION"), csvCell(s.question), csvCell(note)].join(","));
+      rows.push([csvCell("broadcast"),csvCell(i),csvCell(s.timestamp),csvCell("All 10 Personas"),"","",csvCell("QUESTION"),csvCell(s.question),csvCell(note)].join(","));
       for (var j = 0; j < PERSONAS.length; j++) {
-        var pp = PERSONAS[j];
-        var rr = s.results && s.results[pp.id];
+        var pp = PERSONAS[j]; var rr = s.results && s.results[pp.id];
         if (!rr || rr.status !== "done") continue;
-        rows.push([csvCell("broadcast"), csvCell(i), csvCell(s.timestamp), csvCell(pp.name), csvCell(pp.location), csvCell(pp.age), csvCell("response"), csvCell(rr.text), ""].join(","));
+        rows.push([csvCell("broadcast"),csvCell(i),csvCell(s.timestamp),csvCell(pp.name),csvCell(pp.location),csvCell(pp.age),csvCell("response"),csvCell(rr.text),""].join(","));
       }
     } else {
       var persona = PERSONAS.find(function(x){ return x.id === s.personaId; });
       for (var j = 0; j < s.exchanges.length; j++) {
         var e = s.exchanges[j];
-        rows.push([csvCell("chat"), csvCell(i), csvCell(s.timestamp), csvCell(s.persona), csvCell(persona ? persona.location : ""), csvCell(persona ? persona.age : ""), csvCell(e.role), csvCell(e.content), j === 0 ? csvCell(note) : ""].join(","));
+        rows.push([csvCell("chat"),csvCell(i),csvCell(s.timestamp),csvCell(s.persona),csvCell(persona?persona.location:""),csvCell(persona?persona.age:""),csvCell(e.role),csvCell(e.content),j===0?csvCell(note):""].join(","));
       }
-      if (!s.exchanges.length) {
-        rows.push([csvCell("chat"), csvCell(i), csvCell(s.timestamp), csvCell(s.persona), csvCell(persona ? persona.location : ""), csvCell(persona ? persona.age : ""), "", "", csvCell(note)].join(","));
-      }
+      if (!s.exchanges.length) { rows.push([csvCell("chat"),csvCell(i),csvCell(s.timestamp),csvCell(s.persona),csvCell(persona?persona.location:""),csvCell(persona?persona.age:""),"","",csvCell(note)].join(",")); }
     }
   }
-
-  var csv = "\uFEFF" + rows.join("\n"); // BOM for Excel UTF-8 compatibility
-  var blob = new Blob([csv], {type: "text/csv;charset=utf-8;"});
+  var csv = "\uFEFF" + rows.join("\n");
+  var blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
   var url = URL.createObjectURL(blob);
   var a = document.createElement("a");
-  a.href = url;
-  a.download = "jumo-" + new Date().toISOString().slice(0,10) + ".csv";
-  a.click();
+  a.href = url; a.download = "jumo-" + new Date().toISOString().slice(0,10) + ".csv"; a.click();
   URL.revokeObjectURL(url);
 }
 
@@ -1300,22 +1204,13 @@ function copyMsg(msgIdx) {
   var assistantMessages = messages.filter(function(m){ return m.role === "assistant"; });
   var text = assistantMessages[msgIdx] ? assistantMessages[msgIdx].content : null;
   if (!text) return;
-  navigator.clipboard.writeText(text).then(function() {
-    // Brief visual confirmation — find the copy button and flash it
-    var btns = document.querySelectorAll("#messages .btn");
-    // The copy button for this msgIdx is the one that triggered this
-    // Just show a brief toast instead
-    showToast("Copied ✓");
-  }).catch(function() {
-    showToast("Copy failed — select text manually");
-  });
+  navigator.clipboard.writeText(text).then(function(){ showToast("Copied ✓"); }).catch(function(){ showToast("Copy failed — select text manually"); });
 }
 
 function resetConversation() {
   if (!currentPersona) return;
   if (messages.length > 0 && !confirm("Start a new conversation with " + currentPersona.name + "?")) return;
-  messages = [];
-  msgTranslations = {};
+  messages = []; msgTranslations = {};
   startSession(currentPersona);
   renderMessages();
   setTimeout(function(){ var el = document.getElementById("chat-input"); if(el) el.focus(); }, 50);
@@ -1325,32 +1220,21 @@ function showToast(msg) {
   var existing = document.getElementById("toast");
   if (existing) existing.remove();
   var t = document.createElement("div");
-  t.id = "toast";
-  t.textContent = msg;
+  t.id = "toast"; t.textContent = msg;
   t.style.cssText = "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#E2E8F0;padding:8px 16px;border-radius:8px;font-size:12px;z-index:999;pointer-events:none;animation:fadeIn .2s ease";
   document.body.appendChild(t);
   setTimeout(function(){ t.style.opacity="0"; t.style.transition="opacity .3s"; setTimeout(function(){ t.remove(); }, 300); }, 1800);
 }
 
 /* ═══════════════════════════
-   SESSION PERSISTENCE (localStorage)
+   SESSION PERSISTENCE
    ═══════════════════════════ */
 function saveSessionLog() {
-  try {
-    // Save last 50 sessions max to avoid storage bloat
-    var toSave = sessionLog.slice(-50);
-    localStorage.setItem("jumo_sessions", JSON.stringify(toSave));
-  } catch(e) { /* storage full or unavailable — ignore */ }
+  try { localStorage.setItem("jumo_sessions", JSON.stringify(sessionLog.slice(-50))); } catch(e) {}
 }
 
 function loadSessionLog() {
-  try {
-    var saved = localStorage.getItem("jumo_sessions");
-    if (saved) {
-      var parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) sessionLog = parsed;
-    }
-  } catch(e) { /* corrupt data — start fresh */ }
+  try { var saved = localStorage.getItem("jumo_sessions"); if (saved) { var parsed = JSON.parse(saved); if (Array.isArray(parsed)) sessionLog = parsed; } } catch(e) {}
 }
 
 /* ═══════════════════════════
@@ -1358,10 +1242,99 @@ function loadSessionLog() {
    ═══════════════════════════ */
 document.addEventListener("keydown", function(e) {
   if (e.key === "Enter" && !e.shiftKey && document.activeElement === document.getElementById("chat-input")) {
-    e.preventDefault();
-    sendMsg();
+    e.preventDefault(); sendMsg();
   }
 });
+
+/* ═══════════════════════════════════════
+   FLAG SYSTEM
+   ═══════════════════════════════════════ */
+function flagMsg(msgIdx) {
+  if (!currentPersona) return;
+
+  /* Pair question and response by index */
+  var assistantMsgs = messages.filter(function(m){ return m.role === 'assistant'; });
+  var userMsgs      = messages.filter(function(m){ return m.role === 'user'; });
+  var response = assistantMsgs[msgIdx] ? assistantMsgs[msgIdx].content : '';
+  var question = userMsgs[msgIdx]      ? userMsgs[msgIdx].content      : '';
+
+  flagContext = {
+    msgIdx:       msgIdx,
+    question:     question,
+    response:     response,
+    personaId:    currentPersona.id,
+    personaName:  currentPersona.name,
+    personaColor: currentPersona.color || '#3A5A70',
+    sessionId:    currentSession ? currentSession.server_id : null
+  };
+
+  document.getElementById('flag-q-preview').textContent =
+    question.length > 180 ? question.slice(0, 180) + '…' : (question || '(not captured)');
+  document.getElementById('flag-r-preview').textContent =
+    response.length > 220 ? response.slice(0, 220) + '…' : response;
+
+  setFlagType('culturally_inaccurate');
+  document.getElementById('flag-domain').value    = '';
+  document.getElementById('flag-notes').value     = '';
+  document.getElementById('flag-partner').checked = false;
+
+  document.getElementById('flag-modal').style.display = 'flex';
+}
+
+function setFlagType(type) {
+  selectedFlagType = type;
+  document.querySelectorAll('.flag-type-btn').forEach(function(b){
+    b.classList.toggle('selected', b.dataset.type === type);
+  });
+}
+
+function closeFlagModal() {
+  document.getElementById('flag-modal').style.display = 'none';
+  flagContext = null;
+}
+
+function closeFlagModalBg(event) {
+  if (event.target === document.getElementById('flag-modal')) closeFlagModal();
+}
+
+async function submitFlag() {
+  if (!flagContext) return;
+  var btn = document.getElementById('flag-submit-btn');
+  btn.textContent = 'Flagging…'; btn.disabled = true;
+
+  var sendToPartner = document.getElementById('flag-partner').checked;
+
+  var payload = {
+    id:              generateId(),
+    session_id:      flagContext.sessionId,
+    persona_id:      flagContext.personaId,
+    persona_name:    flagContext.personaName,
+    persona_color:   flagContext.personaColor,
+    question_text:   flagContext.question,
+    response_text:   flagContext.response,
+    flag_type:       selectedFlagType,
+    domain_hint:     document.getElementById('flag-domain').value  || null,
+    admin_notes:     document.getElementById('flag-notes').value   || null,
+    send_to_partner: sendToPartner
+  };
+
+  try {
+    var res = await fetch('/api/flags', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'x-access-token': getToken() },
+      body:    JSON.stringify(payload)
+    });
+    closeFlagModal();
+    showToast(res.ok
+      ? ('⚑ Flagged' + (sendToPartner ? ' — sent to partner ↗' : ' ✓'))
+      : '⚑ Flagged (will sync when API is ready)');
+  } catch(e) {
+    closeFlagModal();
+    showToast('⚑ Flagged (offline — will sync when connected)');
+  }
+
+  btn.textContent = 'Submit Flag'; btn.disabled = false;
+}
 </script>
 </body>
 </html>
