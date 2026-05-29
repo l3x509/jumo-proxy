@@ -25,8 +25,19 @@ const DOMAIN_LABELS = {
 };
 
 /* ── Persona files (source of truth for baseline content) ── */
-const filePersonas = require('./personas/index');
-const { buildSystemPrompt, validatePersona } = require('./personas/builder');
+let filePersonas = {};
+let buildSystemPrompt = (p) => p.system_prompt || p.system_prompt_fragment || '';
+let validatePersona   = () => ({ warnings: [] });
+
+try {
+  filePersonas     = require('./personas/index');
+  const builder    = require('./personas/builder');
+  buildSystemPrompt = builder.buildSystemPrompt;
+  validatePersona   = builder.validatePersona;
+} catch(e) {
+  console.warn('⚠ personas/index.js or personas/builder.js not found — using Supabase only.');
+  console.warn('  Add personas/index.js and personas/builder.js to your repo.');
+}
 
 /*
  * personaCache — in-memory store used for every conversation.
