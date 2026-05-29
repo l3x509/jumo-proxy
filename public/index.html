@@ -123,7 +123,14 @@
   @media (max-width: 768px) {
     #left { position:fixed; top:48px; left:0; bottom:0; transform:translateX(-100%); }
     #left.open { transform:translateX(0); }
+    #hamburger { display:flex !important; }
+    #hdr-api-wrap { display:none !important; }
+    #hdr-status { display:none !important; }
+    #sidebar-api-wrap { display:block !important; }
     #sidebar-close { display:block !important; }
+    #cmp-btn { display:none !important; }
+    #bc-btn { display:none !important; }
+    a[href="/admin"] { display:none !important; }
     #messages .msg-bubble-wrap { max-width:92% !important; }
     #chat-qs { overflow-x:auto; -webkit-overflow-scrolling:touch; }
     #chat-qs-inner { flex-wrap:nowrap; }
