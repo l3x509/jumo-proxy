@@ -2643,71 +2643,7 @@ function renderHealthDashboard() {
             : src === 'cultural_edit'     ? '#F59E0B'
             : '#3A5A70';
           return '<div title="'+esc((DOMAIN_INFO[d]?DOMAIN_INFO[d].label:d))+'" style="width:14px;height:14px;border-radius:3px;background:'+dotColor+';flex-shrink:0;"></div>';
-        }).join('') +<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>JUMO</title>
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; }
-  body { font-family: "DM Sans", system-ui, sans-serif; background: #05090F; color: #E2E8F0; font-size: 13px; display: flex; flex-direction: column; }
-  ::-webkit-scrollbar { width: 4px; }
-  ::-webkit-scrollbar-thumb { background: #1E3A5F; border-radius: 2px; }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-  .anim { animation: fadeIn .2s ease; }
-
-  /* ── Shared components ── */
-  .btn { background: #0A1628; border: 1px solid #1E3A5F; border-radius: 6px; color: #94A3B8; padding: 5px 12px; cursor: pointer; font-size: 11.5px; font-weight: 500; transition: all .15s; white-space: nowrap; font-family: inherit; }
-  .btn:hover { background: #0F2040; color: #CBD5E1; border-color: #2D5F8A; }
-  .btn-primary { background: #1E3A5F; border-color: #2D5F8A; color: #E2E8F0; }
-  .btn-primary:hover { background: #2D5F8A; }
-  .btn-success { background: #064E3B; border-color: #065F46; color: #6EE7B7; }
-  .btn-success:hover { background: #065F46; }
-  .lbl { font-size: 9.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #3A5A70; }
-
-  /* ── Auth overlay ── */
-  #auth { position: fixed; inset: 0; background: #05090F; display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
-  #auth-box { background: #070D18; border: 1px solid #1E3A5F; border-radius: 14px; padding: 28px 24px; width: 100%; max-width: 340px; }
-  #auth-title { font-family: 'Georgia', serif; font-weight: 700; font-size: 20px; color: #4B7A8A; margin-bottom: 4px; }
-  #auth-sub { font-size: 12px; color: #3A5A70; margin-bottom: 20px; }
-  #auth-input { width: 100%; background: #040710; border: 1px solid #1E3A5F; border-radius: 7px; color: #E2E8F0; padding: 12px 14px; font-size: 14px; font-family: inherit; margin-bottom: 12px; }
-  #auth-input:focus { outline: none; border-color: #2D5F8A; }
-  #auth-btn { width: 100%; background: #1E3A5F; border: 1px solid #2D5F8A; border-radius: 7px; color: #E2E8F0; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; transition: background .15s; }
-  #auth-btn:hover { background: #2D5F8A; }
-  #auth-error { color: #EF4444; font-size: 12px; margin-top: 8px; display: none; }
-
-  /* ── Header ── */
-  #hdr { height: 48px; border-bottom: 1px solid #0F2040; display: flex; align-items: center; padding: 0 16px; gap: 10px; flex-shrink: 0; }
-  #role-badge { font-size: 10px; padding: 2px 8px; border: 1px solid #0F2040; border-radius: 4px; }
-
-  /* ── Tab bar (admin only) ── */
-  #tab-bar { display: none; gap: 2px; padding: 0 16px; border-bottom: 1px solid #0F2040; flex-shrink: 0; background: #040710; }
-  #tab-bar.visible { display: flex; }
-  .tab-btn { background: transparent; border: none; border-bottom: 2px solid transparent; color: #3A5A70; padding: 10px 14px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; letter-spacing: .04em; transition: all .15s; margin-bottom: -1px; }
-  .tab-btn:hover { color: #94A3B8; }
-  .tab-btn.tab-active { color: #4B7A8A; border-bottom-color: #4B7A8A; }
-
-  /* ── Views ── */
-  .view { flex: 1; display: none; overflow: hidden; }
-  .view.active { display: flex; }
-  .v-sidebar { width: 280px; min-width: 280px; border-right: 1px solid #0F2040; display: flex; flex-direction: column; overflow: hidden; }
-  .v-detail { flex: 1; overflow-y: auto; padding: 20px; }
-
-  /* ══════════════════════════
-     SESSIONS VIEW
-     ══════════════════════════ */
-  #filters { padding: 12px; border-bottom: 1px solid #0F2040; flex-shrink: 0; display: flex; flex-direction: column; gap: 7px; }
-  .filter-row { display: flex; gap: 6px; align-items: center; }
-  select.f-sel { flex: 1; background: #070D18; border: 1px solid #0F2040; border-radius: 6px; color: #94A3B8; padding: 5px 8px; font-size: 11.5px; font-family: inherit; cursor: pointer; }
-  select.f-sel:focus { outline: none; border-color: #1E3A5F; }
-  #stats { padding: 10px 12px; border-bottom: 1px solid #0F2040; display: flex; gap: 14px; flex-shrink: 0; }
-  .stat { text-align: center; }
-  .stat-n { font-size: 18px; font-weight: 700; color: #E2E8F0; line-height: 1; }
-  .stat-l { font-size: 9px; color: #3A5A70; margin-top: 2px; text-transform: uppercase; letter-spacing: .06em; }
-  #session-list { flex: 1; overflow-y: auto; padding: 6px; }
-
+        }).join('') +
         '<div style="flex:1;text-align:right;font-size:9.5px;color:#3A5A70;">'+filled+'/'+DOMAINS.length+(validated?' · '+validated+' validated':'')+'</div>'+
       '</div>'+
       /* Progress bar */
