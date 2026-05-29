@@ -208,6 +208,25 @@
     .view.active { flex-direction: column; }
     .field-row { grid-template-columns: 1fr; }
   }
+
+  /* ── Modal utility classes ────────────────────────── */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(2,5,10,.88); z-index: 400; display: none; align-items: center; justify-content: center; padding: 16px; }
+  .modal-box     { background: #070D18; border: 1px solid #1E3A5F; border-radius: 12px; width: 100%; display: flex; flex-direction: column; overflow: hidden; }
+  .modal-hdr     { padding: 13px 16px; border-bottom: 1px solid #0F2040; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .modal-hdr-title { font-size: 13px; font-weight: 600; color: #E2E8F0; }
+  .modal-close   { background: transparent; border: none; color: #3A5A70; font-size: 18px; cursor: pointer; margin-left: auto; line-height: 1; padding: 2px; }
+  .modal-body    { overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .modal-footer  { padding: 12px 16px; border-top: 1px solid #0F2040; display: flex; gap: 8px; justify-content: flex-end; flex-shrink: 0; }
+  .modal-input   { width: 100%; background: #040710; border: 1px solid #0F2040; border-radius: 5px; color: #CBD5E1; padding: 7px 10px; font-size: 12px; font-family: inherit; }
+  .modal-input:focus { outline: none; border-color: #1E3A5F; }
+  .modal-select  { width: 100%; background: #040710; border: 1px solid #0F2040; border-radius: 5px; color: #94A3B8; padding: 7px 9px; font-size: 12px; font-family: inherit; cursor: pointer; }
+  .modal-select:focus { outline: none; border-color: #1E3A5F; }
+  .modal-textarea { width: 100%; background: #040710; border: 1px solid #0F2040; border-radius: 5px; color: #CBD5E1; padding: 7px 10px; font-size: 12px; font-family: inherit; resize: vertical; line-height: 1.6; }
+  .modal-textarea:focus { outline: none; border-color: #1E3A5F; }
+  .modal-cancel  { background: transparent; border: 1px solid #1E3A5F; border-radius: 6px; color: #64748B; padding: 8px 16px; font-size: 12px; cursor: pointer; font-family: inherit; }
+  .modal-submit  { background: #1E3A5F; border: 1px solid #2D5F8A; border-radius: 6px; color: #E2E8F0; padding: 8px 20px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .modal-submit:disabled { opacity: .5; cursor: not-allowed; }
+  .pending-badge { font-size: 9.5px; background: #78350F; color: #FCD34D; border-radius: 4px; padding: 1px 6px; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -239,6 +258,7 @@
   <button class="tab-btn tab-active" data-tab="sessions" onclick="showTab('sessions')">Sessions</button>
   <button class="tab-btn" data-tab="personas" onclick="showTab('personas')">Personas</button>
   <button class="tab-btn" data-tab="flags" onclick="showTab('flags')">⚑ Flags <span id="flags-badge" style="display:none;background:#7F1D1D;color:#FCA5A5;border-radius:99px;padding:1px 6px;font-size:10px;margin-left:2px">0</span></button>
+  <button class="tab-btn" data-tab="corpus" onclick="showTab('corpus')">Corpus <span id="corpus-badge" style="display:none;background:#1E3A5F;color:#7EC8E3;border-radius:99px;padding:1px 6px;font-size:10px;margin-left:2px">0</span></button>
 </div>
 
 <!-- ══════════ SESSIONS VIEW ══════════ -->
@@ -286,7 +306,11 @@
         <div style="font-size:12px;font-weight:600;color:#CBD5E1">Personas</div>
         <div id="persona-summary" style="font-size:10px;color:#3A5A70;margin-top:1px">—</div>
       </div>
-      <button class="btn" onclick="loadPersonas()" style="font-size:10px">&#x21BA;</button>
+      <div style="display:flex;gap:5px;">
+        <button class="btn" onclick="document.getElementById('md-import-input').click()" style="font-size:10px;color:#22D3EE;border-color:#0E4A5A" title="Import persona from .md file">⬆ Import</button>
+        <input type="file" id="md-import-input" accept=".md,.txt" style="display:none" onchange="handleMarkdownImport(event)">
+        <button class="btn" onclick="loadPersonas()" style="font-size:10px">&#x21BA;</button>
+      </div>
     </div>
     <div style="padding:6px 8px;border-bottom:1px solid #0F2040;flex-shrink:0;">
       <input type="text" id="persona-search"
@@ -294,6 +318,8 @@
         oninput="loadPersonas()"
         style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:5px 8px;font-size:11.5px;font-family:inherit;">
     </div>
+    <!-- Priority 4: Health Dashboard -->
+    <div id="health-dashboard" style="flex-shrink:0;border-bottom:1px solid #0F2040;overflow-y:auto;max-height:320px;"></div>
     <div id="persona-list" style="flex:1;overflow-y:auto;padding:6px;"></div>
     <div style="padding:10px 12px;border-top:1px solid #0F2040;flex-shrink:0;display:flex;gap:12px;flex-wrap:wrap;">
       <div style="display:flex;align-items:center;gap:5px;font-size:9.5px;color:#3A5A70"><div class="status-dot draft"></div>Draft</div>
@@ -411,6 +437,10 @@
       <div class="progress-bar-bg"><div class="progress-bar-fill" id="prog-bar" style="width:0%"></div></div>
       <div class="progress-count" id="prog-count">0 / 0 eleman revize</div>
     </div>
+    <!-- Feature 8: Cultural note button -->
+    <div style="padding:0 0 10px;display:flex;justify-content:flex-end;">
+      <button onclick="openCulturalNoteModal()" style="background:#0A1628;border:1px solid #1E3A5F;border-radius:7px;color:#94A3B8;padding:7px 14px;font-size:11.5px;cursor:pointer;font-family:inherit;">💡 Ajoute nòt kiltirèl</button>
+    </div>
     <div id="p-items-container"></div>
     <div id="partner-empty">Pa gen eleman pou revize kounye a.<br>Admin pral voye eleman bientôt.</div>
   </div>
@@ -449,6 +479,197 @@
   </div>
   <div class="v-detail" id="flag-detail">
     <div style="color:#2A3A50;font-size:12px;padding-top:40px;text-align:center;">Select a flag to review</div>
+  </div>
+</div>
+
+<!-- ══════════ CORPUS VIEW ══════════ -->
+<div id="corpus-view" class="view" style="overflow:hidden;">
+  <div class="v-sidebar">
+    <div style="padding:10px 12px;border-bottom:1px solid #0F2040;flex-shrink:0;">
+      <div style="font-size:12px;font-weight:600;color:#CBD5E1;margin-bottom:8px;">Corpus</div>
+      <button class="btn btn-primary" onclick="openCorpusForm(null)" style="width:100%;margin-bottom:8px;">+ Add Entry</button>
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <select id="corpus-filter-persona" onchange="renderCorpusList()" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:5px 8px;font-size:11.5px;font-family:inherit;">
+          <option value="">All personas</option>
+        </select>
+        <select id="corpus-filter-domain" onchange="renderCorpusList()" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:5px 8px;font-size:11.5px;font-family:inherit;">
+          <option value="">All domains</option>
+          <option value="health">Health</option>
+          <option value="family">Family</option>
+          <option value="economic">Economic</option>
+          <option value="institutional">Institutional</option>
+          <option value="religious">Religious</option>
+          <option value="education">Education</option>
+          <option value="language_profile">Language Profile</option>
+          <option value="general">General</option>
+        </select>
+        <select id="corpus-filter-source" onchange="renderCorpusList()" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:5px 8px;font-size:11.5px;font-family:inherit;">
+          <option value="">All sources</option>
+          <option value="field_interview">Field interview</option>
+          <option value="partner_correction">Partner correction</option>
+          <option value="flag_correction">Flag correction</option>
+          <option value="cultural_edit">Cultural edit</option>
+          <option value="manual">Manual</option>
+        </select>
+      </div>
+    </div>
+    <div id="corpus-list" style="flex:1;overflow-y:auto;padding:6px;"></div>
+    <div style="padding:10px 12px;border-top:1px solid #0F2040;flex-shrink:0;">
+      <button class="btn" onclick="exportCorpusMarkdown()" style="width:100%;font-size:11px;">⬇ Export all as .md</button>
+    </div>
+  </div>
+  <div class="v-detail" id="corpus-detail">
+    <div style="color:#2A3A50;font-size:12px;padding-top:40px;text-align:center;">Select an entry or add a new one</div>
+  </div>
+</div>
+
+<!-- Corpus entry form modal -->
+<div id="corpus-modal" onclick="closeCorpusModalBg(event)" class="modal-overlay">
+  <div class="modal-box" style="max-width:560px;max-height:90vh;">
+    <div style="padding:13px 16px;border-bottom:1px solid #0F2040;display:flex;align-items:center;">
+      <div id="corpus-modal-title" class="modal-hdr-title">Add Corpus Entry</div>
+      <div style="flex:1"></div>
+      <button onclick="closeCorpusModal()" class="modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="cf-id">
+      <div>
+        <div class="lbl" style="margin-bottom:4px;">Title</div>
+        <input id="cf-title" type="text" placeholder="Short description of this entry…" class="modal-input">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div>
+          <div class="lbl" style="margin-bottom:4px;">Persona</div>
+          <select id="cf-persona" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:7px 9px;font-size:12px;font-family:inherit;">
+            <option value="">General (all personas)</option>
+          </select>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:4px;">Domain</div>
+          <select id="cf-domain" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:7px 9px;font-size:12px;font-family:inherit;">
+            <option value="general">General</option>
+            <option value="health">Health</option>
+            <option value="family">Family</option>
+            <option value="economic">Economic</option>
+            <option value="institutional">Institutional</option>
+            <option value="religious">Religious</option>
+            <option value="education">Education</option>
+            <option value="language_profile">Language Profile</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div>
+          <div class="lbl" style="margin-bottom:4px;">Source</div>
+          <select id="cf-source" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:7px 9px;font-size:12px;font-family:inherit;">
+            <option value="manual">Manual</option>
+            <option value="field_interview">Field interview</option>
+            <option value="partner_correction">Partner correction</option>
+            <option value="flag_correction">Flag correction</option>
+            <option value="cultural_edit">Cultural edit</option>
+          </select>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:4px;">Interview / Reference</div>
+          <input id="cf-ref" type="text" placeholder="e.g. interview-003" class="modal-input">
+        </div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:4px;">Content</div>
+        <textarea id="cf-content" rows="8" placeholder="The cultural knowledge, insight, or correction…" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#CBD5E1;padding:7px 10px;font-size:12px;font-family:inherit;resize:vertical;min-height:140px;line-height:1.6;"></textarea>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:4px;">Private notes</div>
+        <textarea id="cf-notes" rows="2" placeholder="Context, caveats, follow-up questions…" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#64748B;padding:7px 10px;font-size:12px;font-family:inherit;resize:vertical;min-height:56px;line-height:1.6;"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeCorpusModal()" class="modal-cancel">Cancel</button>
+      <button id="cf-save-btn" onclick="saveCorpusEntry()" class="modal-submit">Save Entry</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════
+     FEATURE 6: IMPORT MARKDOWN MODAL
+     ═══════════════════════════ -->
+<div id="import-modal" onclick="closeImportModalBg(event)" class="modal-overlay">
+  <div class="modal-box" style="max-width:540px;max-height:90vh;">
+    <div class="modal-hdr">
+      <div class="modal-hdr-title">⬆ Import Persona from Markdown</div>
+      <div style="flex:1"></div>
+      <button onclick="closeImportModal()" class="modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <div class="lbl" style="margin-bottom:4px;">Apply to persona</div>
+        <select id="import-persona-select" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:7px 9px;font-size:12px;font-family:inherit;"></select>
+        <div id="import-detected-name" style="font-size:10.5px;color:#3A5A70;margin-top:4px;"></div>
+      </div>
+      <div id="import-preview" style="display:flex;flex-direction:column;gap:6px;"></div>
+      <div id="import-unmatched" style="display:none;background:#0A1628;border:1px solid #1E3A5F;border-radius:7px;padding:10px 12px;">
+        <div class="lbl" style="margin-bottom:6px;color:#F59E0B;">⚠ Sections not mapped to any domain</div>
+        <div id="import-unmatched-list" style="font-size:11.5px;color:#64748B;line-height:1.8;"></div>
+        <div style="font-size:10.5px;color:#3A5A70;margin-top:4px;">These sections were skipped. Edit SECTION_MAP in set-prompt.js if you need them.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeImportModal()" class="modal-cancel">Cancel</button>
+      <button id="import-confirm-btn" onclick="confirmImport()" class="modal-submit">Apply to Persona</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════
+     FEATURE 8: CULTURAL NOTE MODAL (Partner)
+     ═══════════════════════════ -->
+<div id="cultural-note-modal" onclick="closeCulturalNoteModalBg(event)" class="modal-overlay">
+  <div class="modal-box" style="max-width:480px;max-height:90vh;">
+    <div class="modal-hdr">
+      <div class="modal-hdr-title">💡 Ajoute nòt kiltirèl</div>
+      <div style="flex:1"></div>
+      <button onclick="closeCulturalNoteModal()" class="modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:11.5px;color:#64748B;line-height:1.6;">Ou wè yon bagay ki pa kòrèk, oswa ou vle ajoute yon enfòmasyon kiltirèl. Ekri li isit la pou ekip la revize.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div>
+          <div class="lbl" style="margin-bottom:4px;">Pou ki persona?</div>
+          <select id="cn-persona" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:7px 9px;font-size:12px;font-family:inherit;">
+            <option value="">Jeneral (tout persona)</option>
+          </select>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:4px;">Ki domèn?</div>
+          <select id="cn-domain" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:7px 9px;font-size:12px;font-family:inherit;">
+            <option value="general">Jeneral</option>
+            <option value="health">Sante</option>
+            <option value="family">Fanmi</option>
+            <option value="economic">Ekonomik</option>
+            <option value="institutional">Enstitisyonèl</option>
+            <option value="religious">Relijyon</option>
+            <option value="education">Edikasyon</option>
+            <option value="language_profile">Lang</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:4px;">Nòt ou a</div>
+        <textarea id="cn-content" rows="5" placeholder="Ekri obsèvasyon kiltirèl ou a isit la…" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#CBD5E1;padding:7px 10px;font-size:12px;font-family:inherit;resize:vertical;min-height:100px;line-height:1.6;"></textarea>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:4px;">Konfyans ou</div>
+        <div style="display:flex;gap:6px;">
+          <button class="cn-conf-btn selected" data-conf="certain" onclick="setCnConf('certain')" style="flex:1;background:#0C2B3A;border:1px solid #22D3EE;border-radius:6px;color:#22D3EE;padding:6px 8px;font-size:11px;cursor:pointer;font-family:inherit;">Mwen sèten</button>
+          <button class="cn-conf-btn" data-conf="fairly_sure" onclick="setCnConf('fairly_sure')" style="flex:1;background:#0A1628;border:1px solid #1E3A5F;border-radius:6px;color:#64748B;padding:6px 8px;font-size:11px;cursor:pointer;font-family:inherit;">Mwen panse</button>
+          <button class="cn-conf-btn" data-conf="needs_checking" onclick="setCnConf('needs_checking')" style="flex:1;background:#0A1628;border:1px solid #1E3A5F;border-radius:6px;color:#64748B;padding:6px 8px;font-size:11px;cursor:pointer;font-family:inherit;">Bezwen verifye</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeCulturalNoteModal()" class="modal-cancel">Anile</button>
+      <button id="cn-submit-btn" onclick="submitCulturalNote()" class="modal-submit">Soumèt nòt</button>
+    </div>
   </div>
 </div>
 
@@ -507,12 +728,24 @@ var PARTNER_VERDICTS = [
 /* ════════════════════════════
    STATE
    ════════════════════════════ */
+/* ── Fetch helpers — token always in header, never in URL ── */
+function adminFetch(url, opts) {
+  opts = opts || {};
+  opts.headers = Object.assign({'x-admin-token': currentToken}, opts.headers || {});
+  return fetch(url, opts);
+}
+function partnerFetch(url, opts) {
+  opts = opts || {};
+  opts.headers = Object.assign({'x-partner-token': currentToken}, opts.headers || {});
+  return fetch(url, opts);
+}
+
 var currentRole    = '';
 var currentToken   = '';
 var allSessions    = [], filtered = [], selectedSessionId = null;
 var personaData    = {}, selectedPersonaId = null, isDirty = false;
 var personaListData = []; // lightweight list from API — id, name, color, status, stats
-var partnerItems   = [], partnerVerdicts = {};
+var partnerItems   = [], partnerVerdicts = {}, partnerPersonaContext = {};
 var P_STORAGE_KEY  = 'jumo_partner_v2';
 
 /* ════════════════════════════
@@ -581,9 +814,11 @@ function showTab(tab) {
   document.getElementById('sessions-view').classList.toggle('active', tab==='sessions');
   document.getElementById('personas-view').classList.toggle('active', tab==='personas');
   document.getElementById('flags-view').classList.toggle('active', tab==='flags');
+  document.getElementById('corpus-view').classList.toggle('active', tab==='corpus');
   document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.toggle('tab-active', b.dataset.tab===tab); });
   if (tab==='personas' && Object.keys(personaData).length===0) loadPersonas();
-  if (tab==='flags') loadFlags();
+  if (tab==='flags')  loadFlags();
+  if (tab==='corpus') loadCorpus();
 }
 
 /* ════════════════════════════
@@ -592,7 +827,7 @@ function showTab(tab) {
 async function loadSessions() {
   document.getElementById('session-list').innerHTML='<div style="padding:12px;color:#2A3A50">Loading…</div>';
   try {
-    var res = await fetch('/api/sessions?limit=500&token='+encodeURIComponent(currentToken));
+    var res = await adminFetch('/api/sessions?limit=500');
     if (!res.ok) throw new Error('fail');
     allSessions = await res.json();
     buildFilters(); applyFilters(); updateStats();
@@ -677,9 +912,28 @@ function selectSession(id) {
   } else {
     var exchanges=s.exchanges||[];
     if(!exchanges.length) html+='<div style="color:#2A3A50;font-size:11.5px">No messages recorded.</div>';
-    exchanges.forEach(function(e){
+    /* Build paired Q&A for send-to-partner */
+    var pairs=[];
+    for(var j=0;j<exchanges.length;j++){
+      if(exchanges[j].role==='user') pairs.push({q:exchanges[j].content,a:null});
+      else if(pairs.length && exchanges[j].role==='assistant') pairs[pairs.length-1].a=exchanges[j].content;
+    }
+    exchanges.forEach(function(e,j){
       var isUser=e.role==='user';
-      html+='<div style="display:flex;justify-content:'+(isUser?'flex-end':'flex-start')+'"><div class="bubble '+(isUser?'bubble-user':'bubble-asst')+'" style="'+(!isUser?'border-left:3px solid '+color+';':'')+'">'+esc(e.content)+'</div></div>';
+      var sendBtn='';
+      if(!isUser && pairs.length){
+        var pair=pairs.find(function(p){ return p.a===e.content; });
+        if(pair && pair.a){
+          var qJson=JSON.stringify(pair.q||'');
+          var aJson=JSON.stringify(pair.a);
+          var pidJson=JSON.stringify(s.persona_id||'');
+          var pnJson=JSON.stringify(s.persona_name||'');
+          sendBtn='<div style="margin-top:4px;text-align:right;">' +
+            '<button onclick="sendResponseToPartner('+qJson+','+aJson+','+pidJson+','+pnJson+')" style="background:transparent;border:1px solid #1E3A5F;border-radius:5px;color:#3A5A70;font-size:10px;padding:2px 8px;cursor:pointer;font-family:inherit;">↗ Send to partner</button>' +
+          '</div>';
+        }
+      }
+      html+='<div style="margin-bottom:4px;"><div style="display:flex;justify-content:'+(isUser?'flex-end':'flex-start')+'"><div class="bubble '+(isUser?'bubble-user':'bubble-asst')+'" style="'+(!isUser?'border-left:3px solid '+color+';':'')+'">'+esc(e.content)+'</div></div>'+sendBtn+'</div>';
     });
   }
   html+='</div>';
@@ -752,9 +1006,9 @@ async function loadPersonas() {
   var searchVal = document.getElementById('persona-search') ? document.getElementById('persona-search').value : '';
   list.innerHTML='<div style="padding:12px;color:#2A3A50">Loading…</div>';
   try {
-    var url = '/api/personas?token='+encodeURIComponent(currentToken);
+    var url = '/api/personas';
     if (searchVal) url += '&q=' + encodeURIComponent(searchVal);
-    var res = await fetch(url);
+    var res = await adminFetch(url);
     if(res.ok){
       personaListData = await res.json();
     } else { throw new Error(); }
@@ -767,6 +1021,7 @@ async function loadPersonas() {
   }
   renderPersonaList();
   updatePersonaSummary();
+  renderHealthDashboard();
 }
 
 function renderPersonaList() {
@@ -820,7 +1075,7 @@ async function selectPersona(id) {
   }
 
   try {
-    var res = await fetch('/api/personas/'+encodeURIComponent(id)+'?token='+encodeURIComponent(currentToken));
+    var res = await adminFetch('/api/personas/'+encodeURIComponent(id));
     if (res.ok) {
       var full = await res.json();
       personaData[id] = full;
@@ -930,7 +1185,7 @@ function collectPersonaData() {
 async function savePersona() {
   var p=collectPersonaData(); if(!p) return;
   try {
-    var res=await fetch('/api/personas/'+encodeURIComponent(p.id)+'?token='+encodeURIComponent(currentToken),{
+    var res=await adminFetch('/api/personas/'+encodeURIComponent(p.id), {
       method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)
     });
     personaData[p.id]=p; isDirty=false;
@@ -945,7 +1200,7 @@ async function sendToPartner() {
   var p=collectPersonaData(); if(!p) return;
   if(!confirm('Send '+p.name+' to partner for validation?')) return;
   try {
-    var res=await fetch('/api/personas/'+encodeURIComponent(p.id)+'/send-to-partner?token='+encodeURIComponent(currentToken),{
+    var res=await adminFetch('/api/personas/'+encodeURIComponent(p.id)+'/send-to-partner',{
       method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)
     });
     if(res.ok){
@@ -969,9 +1224,19 @@ window.addEventListener('offline', function(){ document.getElementById('offline-
 
 async function loadPartnerQueue() {
   try {
-    var res=await fetch('/api/partner/queue?token='+encodeURIComponent(currentToken));
+    /* Load queue items */
+    var res = await (currentRole==='partner' ? partnerFetch('/api/partner/queue') : adminFetch('/api/partner/queue'));
     if(res.status===401){ signOut(); return; }
     partnerItems=res.ok ? await res.json() : [];
+
+    /* Load persona context for headers (Priority 1) */
+    try {
+      var pRes = await (currentRole==='partner' ? partnerFetch('/api/partner/personas') : adminFetch('/api/partner/personas'));
+      if(pRes.ok){
+        var personas=await pRes.json();
+        personas.forEach(function(p){ partnerPersonaContext[p.id]=p; });
+      }
+    } catch(e){}
   } catch(e){ partnerItems=[]; }
   try { var s=localStorage.getItem(P_STORAGE_KEY); if(s) partnerVerdicts=JSON.parse(s); } catch(e){}
   renderPartnerItems(); updatePartnerProgress();
@@ -992,13 +1257,33 @@ function renderPartnerItems() {
     var cardClass='val-card'+(v&&v.verdict?(v.verdict==='wrong'?' flagged':' done'):'');
     var animDelay='animation-delay:'+Math.min(idx*.05,.3)+'s';
 
+    /* ── Priority 1: Persona context header ── */
+    var ctx = partnerPersonaContext[item.persona_id] || {};
+    var basic = ctx.basic || {};
+    var contextParts = [];
+    if (basic.age_range)       contextParts.push(basic.age_range + ' ans');
+    if (basic.region)          contextParts.push(basic.region);
+    if (basic.education_level) contextParts.push(basic.education_level);
+    if (basic.dominant_language) contextParts.push(basic.dominant_language);
+    var contextStr = contextParts.join(' · ');
+
+    var personaContextHtml = '<div style="padding:8px 14px;background:#040710;border-bottom:1px solid #0A1628;display:flex;align-items:center;gap:10px;">'+
+      '<div style="width:28px;height:28px;min-width:28px;border-radius:7px;background:'+color+'22;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:'+color+';">'+
+        esc((item.persona_name||'?').slice(0,2).toUpperCase())+
+      '</div>'+
+      '<div>'+
+        '<div style="font-size:12px;font-weight:600;color:'+color+';">'+esc(item.persona_name||item.persona_id)+'</div>'+
+        (contextStr ? '<div style="font-size:10.5px;color:#3A5A70;margin-top:1px;">'+esc(contextStr)+'</div>' : '')+
+        (basic.background ? '<div style="font-size:10px;color:#2A3A50;margin-top:2px;line-height:1.4;">'+esc(basic.background.slice(0,120))+(basic.background.length>120?'…':'')+'</div>' : '')+
+      '</div>'+
+    '</div>';
+
     if(isFlagCorrection){
-      /* Flag correction item — partner writes what the correct answer should be */
       var typeLabel=item.domain_label||item.domain||'Response';
       html+='<div class="'+cardClass+' anim" id="pcard-'+item.id+'" style="'+animDelay+';border-color:#78350F">'+
+        personaContextHtml+
         '<div class="val-card-header" style="background:#1A0A00">'+
           '<div style="font-size:10px;background:#78350F;color:#FCD34D;border-radius:4px;padding:2px 8px;font-weight:600;">⚑ Repons ki pa bon</div>'+
-          '<div class="val-persona-name" style="color:'+color+'">'+esc(item.persona_name)+'</div>'+
           '<div class="val-domain-badge">'+esc(typeLabel)+'</div>'+
         '</div>'+
         '<div class="val-content">'+
@@ -1008,7 +1293,7 @@ function renderPartnerItems() {
         '</div>'+
         '<div class="verdict-section">'+
           '<div class="verdict-lbl" style="color:#F59E0B">Ekri enfòmasyon ki kòrèk la:</div>'+
-          '<textarea class="notes-area" id="pnotes-'+item.id+'" placeholder="Ekri sa JUMO ta dwe di… Ki sa ki vre pou persona sa?" oninput="savePartnerNote(\''+item.id+'\')" style="min-height:100px;">'+(v&&v.notes?esc(v.notes):'')+'</textarea>'+
+          buildStructuredCorrectionForm(item.id,'flag',v)+
           '<div style="margin-top:8px;display:flex;gap:6px;">'+
             '<button class="verdict-btn'+(v&&v.verdict==='accurate'?' sel-accurate':'')+'" onclick="setPartnerVerdict(\''+item.id+'\',\'accurate\')" style="flex:1">✓ Mwen ekri kòreksyon an</button>'+
             '<button class="verdict-btn'+(v&&v.verdict==='wrong'?' sel-wrong':'')+'" onclick="setPartnerVerdict(\''+item.id+'\',\'wrong\')" style="flex:1">✗ Mwen pa konn repons lan</button>'+
@@ -1016,16 +1301,42 @@ function renderPartnerItems() {
           (v&&v.verdict?'<div class="done-indicator">✓ Ou reponn sou eleman sa</div>':'')+
         '</div>'+
       '</div>';
+
+    } else if(item.item_type==='response_validation'){
+      /* Feature 5: Partner validates actual Jumo response */
+      var questionText=item.question_text||extractQuestionFromNotes(item.admin_notes||'');
+      html+='<div class="'+cardClass+' anim" id="pcard-'+item.id+'" style="'+animDelay+';border-color:#7C3AED">'+
+        personaContextHtml+
+        '<div class="val-card-header" style="background:#130D2A;border-bottom-color:#2D1B6E;">'+
+          '<div style="font-size:10px;background:#7C3AED;color:#E9D5FF;border-radius:4px;padding:2px 8px;font-weight:600;">💬 Repons JUMO</div>'+
+          '<div class="val-domain-badge">'+esc(item.domain_label||item.domain||'Repons')+'</div>'+
+        '</div>'+
+        '<div class="val-content">'+
+          (questionText?'<div class="val-content-lbl" style="margin-bottom:4px;">Kesyon yo te poze</div><div style="font-size:12px;color:#64748B;line-height:1.5;font-style:italic;margin-bottom:10px;padding:6px 10px;background:#040710;border-radius:5px;">'+esc(questionText)+'</div>':'')+
+          '<div class="val-content-lbl" style="color:#A78BFA;">Repons JUMO a</div>'+
+          '<div class="val-content-text" style="border-left:3px solid #7C3AED;">'+esc(item.content)+'</div>'+
+        '</div>'+
+        '<div class="verdict-section">'+
+          '<div class="verdict-lbl">Repons sa a kòrèk pou persona sa?</div>'+
+          '<div class="verdict-grid" style="grid-template-columns:1fr 1fr;">'+
+            '<button class="verdict-btn'+(v&&v.verdict==='accurate'?' sel-accurate':'')+'" onclick="setPartnerVerdict(\''+item.id+'\',\'accurate\')">✓ Kòrèk<br><span style="font-size:10px;font-weight:400;opacity:.7">Repons lan bon</span></button>'+
+            '<button class="verdict-btn'+(v&&v.verdict==='partial'?' sel-partial':'')+'" onclick="setPartnerVerdict(\''+item.id+'\',\'partial\')">≈ Pasyèlman<br><span style="font-size:10px;font-weight:400;opacity:.7">Gen pati ki manke</span></button>'+
+            '<button class="verdict-btn'+(v&&v.verdict==='wrong'?' sel-wrong':'')+'" onclick="setPartnerVerdict(\''+item.id+'\',\'wrong\')">✗ Pa kòrèk<br><span style="font-size:10px;font-weight:400;opacity:.7">Enfòmasyon ki mal</span></button>'+
+            '<button class="verdict-btn'+(v&&v.verdict==='off_persona'?' sel-wrong':'')+'" onclick="setPartnerVerdict(\''+item.id+'\',\'off_persona\')">👤 Pa sanble li<br><span style="font-size:10px;font-weight:400;opacity:.7">Vwa a pa bon</span></button>'+
+          '</div>'+
+          ((v&&v.verdict&&v.verdict!=='accurate')?buildStructuredCorrectionForm(item.id,'response',v):'')+
+          (v&&v.verdict?'<div class="done-indicator">✓ Ou revize repons sa</div>':'')+
+        '</div>'+
+      '</div>';
+
     } else {
-      /* Standard domain validation item */
       var btns=PARTNER_VERDICTS.map(function(vd){
         var sel=v&&v.verdict===vd.key?' '+vd.cls:'';
         return '<button class="verdict-btn'+sel+'" onclick="setPartnerVerdict(\''+item.id+'\',\''+vd.key+'\')">'+vd.label+'<br><span style="font-size:10px;font-weight:400;opacity:.7">'+vd.sub+'</span></button>';
       }).join('');
       html+='<div class="'+cardClass+' anim" id="pcard-'+item.id+'" style="'+animDelay+'">'+
+        personaContextHtml+
         '<div class="val-card-header">'+
-          '<div class="val-persona-dot" style="background:'+color+'"></div>'+
-          '<div class="val-persona-name" style="color:'+color+'">'+esc(item.persona_name)+'</div>'+
           '<div class="val-domain-badge">'+esc(item.domain_label||item.domain)+'</div>'+
         '</div>'+
         '<div class="val-content">'+
@@ -1036,7 +1347,7 @@ function renderPartnerItems() {
         '<div class="verdict-section">'+
           '<div class="verdict-lbl">Ki opinyon ou sou enfòmasyon sa?</div>'+
           '<div class="verdict-grid">'+btns+'</div>'+
-          '<textarea class="notes-area" id="pnotes-'+item.id+'" placeholder="Nòt ou yo (opsyonèl)…" oninput="savePartnerNote(\''+item.id+'\')">'+(v&&v.notes?esc(v.notes):'')+'</textarea>'+
+          ((v&&v.verdict&&v.verdict!=='accurate')?buildStructuredCorrectionForm(item.id,'domain',v):'<textarea class="notes-area" id="pnotes-'+item.id+'" placeholder="Nòt ou yo (opsyonèl)…" oninput="savePartnerNote(\''+item.id+'\')">'+(v&&v.notes?esc(v.notes):'')+'</textarea>')+
           (v&&v.verdict?'<div class="done-indicator">✓ Ou revize eleman sa</div>':'')+
         '</div>'+
       '</div>';
@@ -1045,25 +1356,66 @@ function renderPartnerItems() {
   container.innerHTML=html;
 }
 
-function setPartnerVerdict(itemId,verdict) {
-  if(!partnerVerdicts[itemId]) partnerVerdicts[itemId]={verdict:'',notes:''};
-  partnerVerdicts[itemId].verdict=verdict;
+function setPartnerVerdict(itemId, verdict) {
+  if (!partnerVerdicts[itemId]) partnerVerdicts[itemId] = { verdict:'', notes:'' };
+  var prev = partnerVerdicts[itemId].verdict;
+  partnerVerdicts[itemId].verdict = verdict;
   savePartnerLocal();
-  var card=document.getElementById('pcard-'+itemId);
-  if(card){
-    card.className='val-card '+(verdict==='wrong'?'flagged':'done');
-    card.querySelectorAll('.verdict-btn').forEach(function(b){
-      var bv=b.onclick.toString().match(/'([^']+)'\)$/);
-    });
-    // Redraw card verdicts cleanly
-    var btns=PARTNER_VERDICTS.map(function(vd){
-      var sel=vd.key===verdict?' '+vd.cls:'';
-      return '<button class="verdict-btn'+sel+'" onclick="setPartnerVerdict(\''+itemId+'\',\''+vd.key+'\')">'+vd.label+'<br><span style="font-size:10px;font-weight:400;opacity:.7">'+vd.sub+'</span></button>';
-    }).join('');
-    var grid=card.querySelector('.verdict-grid'); if(grid) grid.innerHTML=btns;
-    var di=card.querySelector('.done-indicator');
-    if(!di){ var nd=document.createElement('div'); nd.className='done-indicator'; nd.textContent='✓ Ou revize eleman sa'; card.querySelector('.verdict-section').appendChild(nd); }
+
+  var card = document.getElementById('pcard-'+itemId);
+  if (!card) return;
+
+  /* Update card class */
+  card.className = 'val-card anim ' + (verdict === 'wrong' || verdict === 'off_persona' ? 'flagged' : 'done');
+
+  /* Update verdict button states */
+  card.querySelectorAll('.verdict-btn').forEach(function(b) {
+    /* Extract the verdict value from the onclick attribute */
+    var m = b.getAttribute('onclick').match(/'([^']+)'\)$/);
+    if (!m) return;
+    var bVerdict = m[1];
+    var isSelected = bVerdict === verdict;
+    /* Reset all selection classes, then apply the right one */
+    b.classList.remove('sel-accurate','sel-partial','sel-wrong');
+    if (isSelected) {
+      if (bVerdict === 'accurate')  b.classList.add('sel-accurate');
+      else if (bVerdict === 'partial') b.classList.add('sel-partial');
+      else b.classList.add('sel-wrong');
+    }
+  });
+
+  /* Show/hide structured correction form */
+  var scf = document.getElementById('scf-'+itemId);
+  var verdictSection = card.querySelector('.verdict-section');
+  var needsCorrection = verdict && verdict !== 'accurate';
+
+  if (needsCorrection && !scf && verdictSection) {
+    /* Inject correction form if not already there */
+    var item = partnerItems.find(function(x){ return x.id===itemId; });
+    var type  = item ? (item.item_type === 'response_validation' ? 'response' : 'domain') : 'domain';
+    var formEl = document.createElement('div');
+    formEl.innerHTML = buildStructuredCorrectionForm(itemId, type, partnerVerdicts[itemId]);
+    var firstChild = formEl.firstChild;
+    /* Insert after verdict grid */
+    var grid = verdictSection.querySelector('.verdict-grid');
+    if (grid && grid.nextSibling) {
+      verdictSection.insertBefore(firstChild, grid.nextSibling);
+    } else if (verdictSection) {
+      verdictSection.appendChild(firstChild);
+    }
+  } else if (!needsCorrection && scf) {
+    scf.remove();
   }
+
+  /* Show/hide done indicator */
+  var di = card.querySelector('.done-indicator');
+  if (verdict && !di) {
+    var nd = document.createElement('div');
+    nd.className = 'done-indicator';
+    nd.textContent = '✓ Ou revize eleman sa';
+    if (verdictSection) verdictSection.appendChild(nd);
+  }
+
   updatePartnerProgress();
 }
 
@@ -1098,7 +1450,7 @@ async function partnerSubmit(){
     var v=partnerVerdicts[item.id]||{}; return {id:item.id,persona_id:item.persona_id,domain:item.domain,verdict:v.verdict||'pending',notes:v.notes||''};
   })};
   try {
-    var res=await fetch('/api/partner/validate?token='+encodeURIComponent(currentToken),{
+    var res=await adminFetch('/api/partner/validate', {
       method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)
     });
     if(res.ok){ localStorage.removeItem(P_STORAGE_KEY); showPartnerSuccess(); }
@@ -1123,7 +1475,7 @@ async function retryPending(){
   var pending=localStorage.getItem(P_STORAGE_KEY+'_pending');
   if(!pending||!currentToken||currentRole!=='partner') return;
   try {
-    var res=await fetch('/api/partner/validate?token='+encodeURIComponent(currentToken),{
+    var res=await adminFetch('/api/partner/validate', {
       method:'POST',headers:{'Content-Type':'application/json'},body:pending
     });
     if(res.ok){ localStorage.removeItem(P_STORAGE_KEY+'_pending'); localStorage.removeItem(P_STORAGE_KEY); }
@@ -1188,12 +1540,12 @@ async function loadFlags() {
   var statusFilter  = document.getElementById('flag-filter-status')  ? document.getElementById('flag-filter-status').value  : '';
   var personaFilter = document.getElementById('flag-filter-persona') ? document.getElementById('flag-filter-persona').value : '';
 
-  var url = '/api/flags?token='+encodeURIComponent(currentToken);
+  var url = '/api/flags';
   if (statusFilter)  url += '&status='+encodeURIComponent(statusFilter);
   if (personaFilter) url += '&persona_id='+encodeURIComponent(personaFilter);
 
   try {
-    var res = await fetch(url);
+    var res = await adminFetch(url);
     if (res.ok) {
       flagsData = await res.json();
     } else {
@@ -1310,9 +1662,10 @@ function selectFlag(id) {
     '<div style="display:flex;flex-direction:column;gap:8px;">';
 
   if (f.domain_hint && f.status !== 'resolved') {
-    html += '<button class="btn btn-success" onclick="applyFlagToPersona(\''+esc(f.id)+'\',\''+esc(f.persona_id)+'\',\''+esc(f.domain_hint)+'\')" style="text-align:left;padding:10px 12px;">'+
-      '✎ Open '+esc(domainLabel)+' domain for '+esc(f.persona_name||f.persona_id)+'<br>'+
-      '<span style="font-size:10px;font-weight:400;opacity:.7;">Navigate to persona editor with this domain expanded</span>'+
+    var correctionText = f.partner_correction || '';
+    html += '<button class="btn btn-success" onclick="applyFlagToPersona(\''+esc(f.id)+'\',\''+esc(f.persona_id)+'\',\''+esc(f.domain_hint)+'\','+JSON.stringify(correctionText)+')" style="text-align:left;padding:10px 12px;">'+
+      '✎ Open '+esc(domainLabel)+' domain for '+esc(f.persona_name||f.persona_id)+(correctionText ? ' + load correction' : '')+'<br>'+
+      '<span style="font-size:10px;font-weight:400;opacity:.7;">'+(correctionText ? 'Partner correction will be pre-loaded into the domain textarea' : 'Navigate to persona editor with this domain expanded')+'</span>'+
     '</button>';
   }
 
@@ -1340,25 +1693,70 @@ function selectFlag(id) {
   detail.innerHTML = html;
 }
 
-function applyFlagToPersona(flagId, personaId, domainHint) {
-  /* Navigate to Personas tab, select persona, open the relevant domain */
+function applyFlagToPersona(flagId, personaId, domainHint, correction) {
   showTab('personas');
   setTimeout(async function() {
     await selectPersona(personaId);
     setTimeout(function() {
-      /* Open the relevant domain section */
+      /* Open the domain section */
       var body = document.getElementById('dom-'+domainHint);
       var chev = document.getElementById('chev-'+domainHint);
       if (body && body.classList.contains('hidden')) {
         body.classList.remove('hidden');
         if (chev) chev.classList.add('open');
       }
-      /* Scroll the domain into view */
       var block = document.getElementById('block-'+domainHint);
       if (block) block.scrollIntoView({behavior:'smooth', block:'center'});
-      showToast('Edit the '+domainHint+' domain — apply the correction, then save');
+
+      /* Pre-populate textarea with partner correction if available */
+      if (correction && correction.trim()) {
+        var textarea = document.getElementById('fd-'+domainHint+'-content');
+        if (textarea) {
+          /* Store existing content in data attr so admin can compare */
+          textarea.dataset.previous = textarea.value;
+          textarea.value = correction.trim();
+
+          /* Mark source as partner_validated and confidence high */
+          var srcSel = document.getElementById('fd-'+domainHint+'-source');
+          var cfSel  = document.getElementById('fd-'+domainHint+'-confidence');
+          if (srcSel) srcSel.value = 'partner_validated';
+          if (cfSel)  cfSel.value  = 'high';
+
+          markDirty();
+          textarea.style.borderColor = '#34D399';
+          textarea.style.background  = '#022C22';
+
+          /* Show correction banner above the domain block */
+          var existingBanner = document.getElementById('correction-banner-'+domainHint);
+          if (existingBanner) existingBanner.remove();
+          var banner = document.createElement('div');
+          banner.id = 'correction-banner-'+domainHint;
+          banner.style.cssText = 'background:#022C22;border:1px solid #065F46;border-radius:7px;padding:10px 14px;margin-bottom:8px;font-size:11.5px;color:#6EE7B7;line-height:1.6;';
+          banner.innerHTML =
+            '<div style="font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:6px;">'+
+              '<span style="color:#34D399">✓</span> Partner correction loaded'+
+              '<button onclick="revertDomainContent(\''+domainHint+'\')" style="margin-left:auto;background:transparent;border:1px solid #065F46;border-radius:4px;color:#94A3B8;font-size:10px;padding:2px 8px;cursor:pointer;font-family:inherit;">Revert to previous</button>'+
+            '</div>'+
+            '<div style="color:#3A5A70;font-size:10.5px;">Review the correction above, adjust if needed, then click Save.</div>';
+          if (block) block.insertBefore(banner, block.firstChild);
+        }
+      } else {
+        showToast('Edit the '+domainHint+' domain — apply the correction, then save');
+      }
     }, 400);
   }, 200);
+}
+
+function revertDomainContent(domainHint) {
+  var textarea = document.getElementById('fd-'+domainHint+'-content');
+  if (!textarea) return;
+  textarea.value = textarea.dataset.previous || '';
+  textarea.style.borderColor = '';
+  textarea.style.background  = '';
+  var banner = document.getElementById('correction-banner-'+domainHint);
+  if (banner) banner.remove();
+  markDirty();
+  showToast('Reverted to previous content');
 }
 
 function downloadCorpusSnippet(flagId) {
@@ -1400,7 +1798,7 @@ function downloadCorpusSnippet(flagId) {
 
 async function resolveFlag(flagId) {
   try {
-    await fetch('/api/flags/'+encodeURIComponent(flagId)+'?token='+encodeURIComponent(currentToken), {
+    await adminFetch('/api/flags/'+encodeURIComponent(flagId), {
       method:'PUT',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({status:'resolved'})
@@ -1423,7 +1821,7 @@ async function sendFlagToPartner(flagId) {
       headers:{'Content-Type':'application/json','x-access-token':currentToken},
       body:JSON.stringify(Object.assign({},f,{id:flagId+'-resend-'+Date.now(),send_to_partner:true}))
     });
-    await fetch('/api/flags/'+encodeURIComponent(flagId)+'?token='+encodeURIComponent(currentToken), {
+    await adminFetch('/api/flags/'+encodeURIComponent(flagId), {
       method:'PUT',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({status:'sent_to_partner'})
@@ -1458,9 +1856,7 @@ async function previewPrompt() {
   modal.style.display = 'flex';
 
   try {
-    var res = await fetch(
-      '/api/personas/' + encodeURIComponent(selectedPersonaId) + '/prompt?token=' + encodeURIComponent(currentToken)
-    );
+    var res = await adminFetch('/api/personas/' + encodeURIComponent(selectedPersonaId) + '/prompt');
 
     if (!res.ok) {
       // API endpoint not deployed yet — build preview client-side from form data
@@ -1585,7 +1981,7 @@ async function savePersonaQuiet() {
   var p = collectPersonaData();
   if (!p) return false;
   try {
-    await fetch('/api/personas/' + encodeURIComponent(p.id) + '?token=' + encodeURIComponent(currentToken), {
+    await adminFetch('/api/personas/' + encodeURIComponent(p.id), {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p)
     });
     personaData[p.id] = p;
@@ -1597,6 +1993,678 @@ async function savePersonaQuiet() {
     return true; // Still proceed with local data
   }
 }
+
+/* ════════════════════════════════════════════
+   FEATURE 7: STRUCTURED CORRECTION FORM
+   ════════════════════════════════════════════ */
+function buildStructuredCorrectionForm(itemId, type, existingVerdict) {
+  var parsed = existingVerdict && existingVerdict.notes ? parseStructuredNotes(existingVerdict.notes) : {};
+  return '<div class="struct-correction" id="scf-'+itemId+'" style="margin-top:10px;display:flex;flex-direction:column;gap:7px;">'+
+    '<div>'+
+      '<div style="font-size:9.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#F59E0B;margin-bottom:4px;">Ki sa ki pa kòrèk?</div>'+
+      '<textarea class="notes-area" id="scf-wrong-'+itemId+'" oninput="syncStructuredNotes(\''+itemId+'\')" placeholder="Kopye pati oswa mo ki pa bon an…" style="min-height:50px;">'+(parsed.wrong||'')+'</textarea>'+
+    '</div>'+
+    '<div>'+
+      '<div style="font-size:9.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#34D399;margin-bottom:4px;">Ki sa ki kòrèk?</div>'+
+      '<textarea class="notes-area" id="scf-correct-'+itemId+'" oninput="syncStructuredNotes(\''+itemId+'\')" placeholder="Ekri repons ki kòrèk la…" style="min-height:80px;">'+(parsed.correct||'')+'</textarea>'+
+    '</div>'+
+    '<div style="display:flex;gap:6px;">'+
+      buildConfBtn(itemId,'certain','Mwen sèten',parsed.confidence)+
+      buildConfBtn(itemId,'fairly_sure','Mwen panse',parsed.confidence)+
+      buildConfBtn(itemId,'needs_checking','Bezwen verifye',parsed.confidence)+
+    '</div>'+
+    '<div>'+
+      '<div style="font-size:9.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#3A5A70;margin-bottom:4px;">Sous konesans ou</div>'+
+      '<select id="scf-source-'+itemId+'" onchange="syncStructuredNotes(\''+itemId+'\')" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:6px 8px;font-size:11.5px;font-family:inherit;">'+
+        '<option value="personal_experience"'+(parsed.source==='personal_experience'?' selected':'')+'>Eksperyans pèsonèl</option>'+
+        '<option value="community_knowledge"'+(parsed.source==='community_knowledge'?' selected':'')+'>Konesans kominotè</option>'+
+        '<option value="professional_knowledge"'+(parsed.source==='professional_knowledge'?' selected':'')+'>Konesans pwofesyonèl</option>'+
+        '<option value="general_knowledge"'+((!parsed.source||parsed.source==='general_knowledge')?' selected':'')+'>Konesans jeneral</option>'+
+      '</select>'+
+    '</div>'+
+  '</div>';
+}
+
+function buildConfBtn(itemId, val, label, current) {
+  var sel = current === val;
+  return '<button onclick="setStructuredConf(\''+itemId+'\',\''+val+'\')" style="flex:1;background:'+(sel?'#0C2B3A':'#0A1628')+';border:1px solid '+(sel?'#22D3EE':'#1E3A5F')+';border-radius:5px;color:'+(sel?'#22D3EE':'#64748B')+';padding:5px 4px;font-size:10.5px;cursor:pointer;font-family:inherit;">'+label+'</button>';
+}
+
+function setStructuredConf(itemId, val) {
+  var form = document.getElementById('scf-'+itemId);
+  if (!form) return;
+  form.querySelectorAll('[onclick*="setStructuredConf"]').forEach(function(b) {
+    var isThis = b.getAttribute('onclick').indexOf("'"+val+"'") !== -1;
+    b.style.background  = isThis ? '#0C2B3A' : '#0A1628';
+    b.style.borderColor = isThis ? '#22D3EE' : '#1E3A5F';
+    b.style.color       = isThis ? '#22D3EE' : '#64748B';
+  });
+  form.dataset.conf = val;
+  syncStructuredNotes(itemId);
+}
+
+function syncStructuredNotes(itemId) {
+  var wrong   = (document.getElementById('scf-wrong-'+itemId)   ||{}).value||'';
+  var correct = (document.getElementById('scf-correct-'+itemId) ||{}).value||'';
+  var source  = (document.getElementById('scf-source-'+itemId)  ||{}).value||'';
+  var form    = document.getElementById('scf-'+itemId);
+  var conf    = form ? (form.dataset.conf||'general_knowledge') : 'general_knowledge';
+  var structured = '';
+  if (wrong.trim())   structured += 'WRONG: '+wrong.trim()+'\n';
+  if (correct.trim()) structured += 'CORRECT: '+correct.trim()+'\n';
+  structured += 'CONFIDENCE: '+conf+'\nSOURCE: '+source;
+  if (!partnerVerdicts[itemId]) partnerVerdicts[itemId]={verdict:'',notes:''};
+  partnerVerdicts[itemId].notes = structured.trim();
+  savePartnerLocal();
+}
+
+function parseStructuredNotes(notes) {
+  if (!notes) return {};
+  var r={};
+  var wm=notes.match(/^WRONG:\s*(.+)/m);
+  var cm=notes.match(/^CORRECT:\s*([\s\S]+?)(?=\nCONFIDENCE:|$)/m);
+  var fm=notes.match(/^CONFIDENCE:\s*(.+)/m);
+  var sm=notes.match(/^SOURCE:\s*(.+)/m);
+  if(wm) r.wrong=wm[1].trim();
+  if(cm) r.correct=cm[1].trim();
+  if(fm) r.confidence=fm[1].trim();
+  if(sm) r.source=sm[1].trim();
+  return r;
+}
+
+/* ════════════════════════════════════════════
+   FEATURE 5: PARTNER VALIDATES JUMO RESPONSES
+   ════════════════════════════════════════════ */
+function extractQuestionFromNotes(notes) {
+  if (!notes) return '';
+  var m = notes.match(/^Q:\s*(.+)/m);
+  return m ? m[1].trim() : '';
+}
+
+async function sendResponseToPartner(question, response, personaId, personaName) {
+  if (!currentToken) { showToast('Sign in as admin first'); return; }
+  try {
+    var res = await adminFetch('/api/partner/send-response', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ question_text:question, response_text:response, persona_id:personaId, persona_name:personaName })
+    });
+    showToast(res.ok ? '↗ Sent to partner queue' : 'Could not send — check connection');
+  } catch(e) { showToast('Could not send — check connection'); }
+}
+
+/* ════════════════════════════════════════════
+   FEATURE 6: IMPORT PERSONA FROM MARKDOWN
+   ════════════════════════════════════════════ */
+var _importParsed = null;
+
+var IMPORT_SECTION_MAP = [
+  { domain:'health',           match:['health'] },
+  { domain:'religious',        match:['spiritual','religion','vodou','bapti','lwa','church','faith'] },
+  { domain:'economic',         match:['economic','madan sara','boutik','market work','what she carries','daily economic','income','financial','sòl','sol '] },
+  { domain:'institutional',    match:['trust','security','refusal','ngo','organization','institution','research value','outsider','authority'] },
+  { domain:'family',           match:['family','15-year','children','household','stigma','social','community','neighbor','network'] },
+  { domain:'education',        match:['education','school','literacy','learning'] },
+  { domain:'language_profile', match:['voice','tone','proverb','vocabulary','media','information habit','sample response','language','cultural vocabulary','repertoire'] },
+];
+var IMPORT_BG_MATCH   = ['foundational condition','background','who she is','who he is'];
+var IMPORT_SKIP_MATCH = ['demographics','system prompt','version','previous title','secondary description'];
+
+function handleMarkdownImport(event) {
+  var file = event.target.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    _importParsed = parsePersonaMarkdown(e.target.result);
+    showImportPreview(_importParsed);
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function parsePersonaMarkdown(text) {
+  var lines=text.split('\n'), sections=[], current=null;
+  for(var i=0;i<lines.length;i++){
+    var h2=lines[i].match(/^##\s+(.+)/), h3=lines[i].match(/^###\s+(.+)/), hdr=h2||h3;
+    if(hdr){ if(current) sections.push(current); current={title:hdr[1].trim(),lines:[]}; }
+    else if(current) current.lines.push(lines[i]);
+  }
+  if(current) sections.push(current);
+  sections=sections.map(function(s){ return {title:s.title,content:s.lines.join('\n').trim()}; });
+
+  function classify(title){
+    var lower=title.toLowerCase();
+    if(IMPORT_SKIP_MATCH.some(function(m){return lower.includes(m);})) return 'skip';
+    if(IMPORT_BG_MATCH.some(function(m){return lower.includes(m);}))   return 'background';
+    for(var i=0;i<IMPORT_SECTION_MAP.length;i++){
+      if(IMPORT_SECTION_MAP[i].match.some(function(m){return lower.includes(m);})) return IMPORT_SECTION_MAP[i].domain;
+    }
+    return 'unmatched';
+  }
+
+  var promptMatch=text.match(/###\s*System Prompt[^\n]*\n[\s\S]*?```[^\n]*\n([\s\S]*?)```/);
+  var systemPrompt=promptMatch?promptMatch[1].trim():null;
+
+  var pick=function(p){var m=text.match(p);return m?m[1].trim():null;};
+  var basic={age_range:pick(/\*\*Age:\*\*\s*(.+)/),region:pick(/\*\*Location:\*\*\s*(.+)/),education_level:pick(/\*\*Education:\*\*\s*(.+)/)};
+  Object.keys(basic).forEach(function(k){if(!basic[k])delete basic[k];});
+
+  var nameMatch=text.match(/##\s*PERSONA\s*\d*:?\s*([A-Za-zÀ-ÿ\s\-]+)/);
+  var detectedName=nameMatch?nameMatch[1].trim():null;
+
+  var domainContent={}, backgroundParts=[], unmatched=[];
+  sections.forEach(function(section){
+    if(!section.content) return;
+    var dest=classify(section.title);
+    if(dest==='skip') return;
+    if(dest==='background'){backgroundParts.push('## '+section.title+'\n'+section.content);return;}
+    if(dest==='unmatched'){unmatched.push(section.title);return;}
+    if(domainContent[dest]) domainContent[dest]+='\n\n---\n\n## '+section.title+'\n'+section.content;
+    else                    domainContent[dest]='## '+section.title+'\n'+section.content;
+  });
+  if(backgroundParts.length) basic.background=backgroundParts.join('\n\n');
+
+  return {systemPrompt,basic,domainContent,unmatched,detectedName};
+}
+
+function showImportPreview(parsed) {
+  var sel=document.getElementById('import-persona-select');
+  var opts='<option value="">— select persona —</option>';
+  Object.values(personaData).forEach(function(p){ opts+='<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>'; });
+  sel.innerHTML=opts;
+
+  if(parsed.detectedName){
+    document.getElementById('import-detected-name').textContent='Detected: '+parsed.detectedName;
+    Object.values(personaData).forEach(function(p){
+      if(p.name.toLowerCase().includes(parsed.detectedName.toLowerCase().split(' ')[0].toLowerCase())) sel.value=p.id;
+    });
+  } else { document.getElementById('import-detected-name').textContent=''; }
+
+  var DOMAINS=['health','family','economic','institutional','religious','education','language_profile'];
+  var html='<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#040710;border:1px solid #0F2040;border-radius:7px;">'+
+    '<div style="width:8px;height:8px;border-radius:50%;background:'+(parsed.systemPrompt?'#22C55E':'#3A5A70')+';"></div>'+
+    '<div style="font-size:11.5px;color:#CBD5E1;flex:1;">System Prompt</div>'+
+    '<div style="font-size:10.5px;color:'+(parsed.systemPrompt?'#22C55E':'#3A5A70')+';">'+(parsed.systemPrompt?parsed.systemPrompt.length+' chars':'not found')+'</div>'+
+  '</div>';
+  DOMAINS.forEach(function(d){
+    var has=!!parsed.domainContent[d], label=DOMAIN_INFO[d]?DOMAIN_INFO[d].label:d;
+    html+='<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#040710;border:1px solid #0F2040;border-radius:7px;">'+
+      '<div style="width:8px;height:8px;border-radius:50%;background:'+(has?'#F59E0B':'#1E2A3A')+';"></div>'+
+      '<div style="font-size:11.5px;color:'+(has?'#CBD5E1':'#3A5A70')+';flex:1;">'+esc(label)+'</div>'+
+      '<div style="font-size:10.5px;color:'+(has?'#F59E0B':'#2A3A50')+';">'+(has?'✓ found':'—')+'</div>'+
+    '</div>';
+  });
+  var bkeys=Object.keys(parsed.basic).filter(function(k){return k!=='background';});
+  if(bkeys.length) html+='<div style="padding:7px 10px;background:#040710;border:1px solid #0F2040;border-radius:7px;font-size:11px;color:#3A5A70;">Basic: '+bkeys.map(function(k){return parsed.basic[k];}).join(' · ')+'</div>';
+
+  document.getElementById('import-preview').innerHTML=html;
+  if(parsed.unmatched.length){
+    document.getElementById('import-unmatched').style.display='block';
+    document.getElementById('import-unmatched-list').textContent=parsed.unmatched.join(', ');
+  } else { document.getElementById('import-unmatched').style.display='none'; }
+
+  document.getElementById('import-modal').style.display='flex';
+}
+
+async function confirmImport() {
+  if(!_importParsed) return;
+  var personaId=document.getElementById('import-persona-select').value;
+  if(!personaId){ showToast('Select a persona to apply to'); return; }
+  var btn=document.getElementById('import-confirm-btn');
+  btn.textContent='Applying…'; btn.disabled=true;
+
+  var existing=personaData[personaId]||makeDefaultPersona(personaId);
+  var DOMAINS=['health','family','economic','institutional','religious','education','language_profile'];
+  if(_importParsed.systemPrompt) existing.system_prompt_fragment=_importParsed.systemPrompt;
+  existing.basic=Object.assign(existing.basic||{},_importParsed.basic);
+  DOMAINS.forEach(function(d){
+    if(_importParsed.domainContent[d]){
+      if(!existing.domains[d]) existing.domains[d]={content:'',source:'ai_generated',confidence:'low',notes:''};
+      existing.domains[d].content = _importParsed.domainContent[d];
+      existing.domains[d].source='cultural_edit'; existing.domains[d].confidence='medium';
+    }
+  });
+  existing.version=(existing.version||1)+1; existing.updated_at=new Date().toISOString();
+
+  try {
+    var res=await adminFetch('/api/personas/'+encodeURIComponent(personaId), {
+      method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(existing)
+    });
+    if(res.ok){ personaData[personaId]=existing; closeImportModal(); selectPersona(personaId); renderHealthDashboard(); showToast('✓ Persona updated from markdown'); }
+    else showToast('Save failed — check connection');
+  } catch(e){ showToast('Save failed'); }
+  btn.textContent='Apply to Persona'; btn.disabled=false;
+}
+
+function closeImportModal()    { document.getElementById('import-modal').style.display='none'; _importParsed=null; }
+function closeImportModalBg(e) { if(e.target===document.getElementById('import-modal')) closeImportModal(); }
+
+/* ════════════════════════════════════════════
+   FEATURE 8: CULTURAL NOTES (Partner)
+   ════════════════════════════════════════════ */
+var _cnConf='certain';
+
+function openCulturalNoteModal() {
+  var sel=document.getElementById('cn-persona');
+  var opts='<option value="">Jeneral (tout persona)</option>';
+  Object.values(partnerPersonaContext).forEach(function(p){ opts+='<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>'; });
+  sel.innerHTML=opts;
+  document.getElementById('cn-content').value='';
+  document.getElementById('cn-domain').value='general';
+  _cnConf='certain';
+  document.querySelectorAll('.cn-conf-btn').forEach(function(b){
+    var isThis=b.dataset.conf==='certain';
+    b.style.background=isThis?'#0C2B3A':'#0A1628'; b.style.borderColor=isThis?'#22D3EE':'#1E3A5F'; b.style.color=isThis?'#22D3EE':'#64748B';
+  });
+  document.getElementById('cultural-note-modal').style.display='flex';
+  setTimeout(function(){document.getElementById('cn-content').focus();},100);
+}
+
+function setCnConf(val) {
+  _cnConf=val;
+  document.querySelectorAll('.cn-conf-btn').forEach(function(b){
+    var isThis=b.dataset.conf===val;
+    b.style.background=isThis?'#0C2B3A':'#0A1628'; b.style.borderColor=isThis?'#22D3EE':'#1E3A5F'; b.style.color=isThis?'#22D3EE':'#64748B';
+  });
+}
+
+function closeCulturalNoteModal()    { document.getElementById('cultural-note-modal').style.display='none'; }
+function closeCulturalNoteModalBg(e) { if(e.target===document.getElementById('cultural-note-modal')) closeCulturalNoteModal(); }
+
+async function submitCulturalNote() {
+  var content=document.getElementById('cn-content').value.trim();
+  if(!content){ showToast('Pa bliye ekri nòt ou a'); return; }
+  var btn=document.getElementById('cn-submit-btn');
+  btn.textContent='Ap voye…'; btn.disabled=true;
+  var personaSel=document.getElementById('cn-persona');
+  var personaId=personaSel.value||null;
+  var personaName=personaId?(personaSel.options[personaSel.selectedIndex].text):null;
+  try {
+    var res=await adminFetch('/api/partner/notes', {
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({persona_id:personaId,persona_name:personaName,domain:document.getElementById('cn-domain').value||'general',content:content,confidence:_cnConf})
+    });
+    if(res.ok){ closeCulturalNoteModal(); showToast('✓ Nòt ou a voye bay ekip la — mèsi!'); }
+    else showToast('Pa kapab voye — eseye ankò');
+  } catch(e){ showToast('Pa kapab voye — eseye ankò'); }
+  btn.textContent='Soumèt nòt'; btn.disabled=false;
+}
+   ════════════════════════════════════════════
+
+   Requires jumo_corpus table in Supabase:
+
+   create table jumo_corpus (
+     id text primary key,
+     persona_id text,
+     persona_name text,
+     domain text default 'general',
+     source text default 'manual',
+     reference text,
+     title text,
+     content text not null,
+     notes text,
+     status text default 'active',
+     created_at timestamptz default now(),
+     updated_at timestamptz default now()
+   );
+   ════════════════════════════════════════════ */
+
+var corpusData = [];
+var selectedCorpusId = null;
+
+var SOURCE_LABELS = {
+  field_interview:    '🎙 Field interview',
+  partner_correction: '✓ Partner correction',
+  flag_correction:    '⚑ Flag correction',
+  cultural_edit:      '✎ Cultural edit',
+  manual:             '✍ Manual'
+};
+
+async function loadCorpus() {
+  document.getElementById('corpus-list').innerHTML = '<div style="padding:12px;color:#2A3A50;font-size:11.5px;">Loading…</div>';
+  try {
+    var res = await adminFetch('/api/corpus');
+    if (res.ok) corpusData = await res.json();
+    else corpusData = [];
+  } catch(e) { corpusData = []; }
+  buildCorpusPersonaFilter();
+  renderCorpusList();
+  updateCorpusBadge();
+}
+
+function buildCorpusPersonaFilter() {
+  var sel = document.getElementById('corpus-filter-persona');
+  if (!sel) return;
+  var cur = sel.value;
+  var seen = {};
+  var opts = '<option value="">All personas</option>';
+  corpusData.forEach(function(e) {
+    if (e.persona_id && !seen[e.persona_id]) {
+      seen[e.persona_id] = true;
+      opts += '<option value="'+esc(e.persona_id)+'">'+esc(e.persona_name||e.persona_id)+'</option>';
+    }
+  });
+  opts += '<option value="general">General (no persona)</option>';
+  sel.innerHTML = opts;
+  if (cur) sel.value = cur;
+}
+
+function updateCorpusBadge() {
+  var badge = document.getElementById('corpus-badge');
+  if (badge) { badge.textContent = corpusData.length; badge.style.display = corpusData.length > 0 ? 'inline' : 'none'; }
+}
+
+function renderCorpusList() {
+  var list = document.getElementById('corpus-list');
+  var pf = document.getElementById('corpus-filter-persona') ? document.getElementById('corpus-filter-persona').value : '';
+  var df = document.getElementById('corpus-filter-domain')  ? document.getElementById('corpus-filter-domain').value  : '';
+  var sf = document.getElementById('corpus-filter-source')  ? document.getElementById('corpus-filter-source').value  : '';
+
+  var filtered = corpusData.filter(function(e) {
+    if (pf && pf !== 'general' && e.persona_id !== pf) return false;
+    if (pf === 'general' && e.persona_id) return false;
+    if (df && e.domain !== df) return false;
+    if (sf && e.source !== sf) return false;
+    return true;
+  });
+
+  if (!filtered.length) {
+    list.innerHTML = '<div style="padding:12px;color:#2A3A50;font-size:11.5px;">'+(corpusData.length ? 'No entries match filters.' : 'No entries yet. Add your first one.')+'</div>';
+    return;
+  }
+
+  var html = '';
+  filtered.forEach(function(e) {
+    var color = personaColor(e.persona_id) || '#3A5A70';
+    var dt = e.created_at ? new Date(e.created_at).toLocaleDateString([], {month:'short', day:'numeric', year:'2-digit'}) : '';
+    var srcLabel = (SOURCE_LABELS[e.source] || e.source || '').replace(/^[^ ]+ /, '');
+    var isPending = e.status === 'pending_review';
+    html += '<div class="s-item'+(e.id===selectedCorpusId?' active':'')+'" onclick="selectCorpusEntry(\''+esc(e.id)+'\')" style="border-left:3px solid '+color+'">' +
+      '<div style="font-size:11.5px;font-weight:600;color:#CBD5E1;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+
+        (isPending?'<span class="pending-badge" style="margin-right:5px;">Pending</span>':'')+
+        esc(e.title||e.content.slice(0,50))+
+      '</div>'+
+      '<div style="font-size:10px;color:#3A5A70;">'+esc(e.persona_name||'General')+' · '+(DOMAIN_INFO[e.domain] ? DOMAIN_INFO[e.domain].label : esc(e.domain||'General'))+'</div>'+
+      '<div style="font-size:10px;color:#2A3A50;margin-top:1px;">'+esc(srcLabel)+' · '+esc(dt)+'</div>'+
+    '</div>';
+  });
+  list.innerHTML = html;
+}
+
+function selectCorpusEntry(id) {
+  selectedCorpusId = id;
+  renderCorpusList();
+  var e = corpusData.find(function(x){ return x.id===id; });
+  if (!e) return;
+
+  var color = personaColor(e.persona_id) || '#3A5A70';
+  var dt = e.created_at ? new Date(e.created_at).toLocaleString() : '';
+  var domainLabel = DOMAIN_INFO[e.domain] ? DOMAIN_INFO[e.domain].label : (e.domain || 'General');
+
+  var html = '<div class="anim">'+
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #0F2040;">'+
+      '<div style="flex:1;">'+
+        '<div style="font-size:14px;font-weight:600;color:#E2E8F0;line-height:1.3;">'+
+          (e.status==='pending_review'?'<span class="pending-badge" style="margin-right:8px;">Pending review</span>':'')+
+          esc(e.title||'Untitled entry')+
+        '</div>'+
+        '<div style="font-size:10.5px;color:#3A5A70;margin-top:3px;">'+
+          esc(e.persona_name||'General')+' · '+esc(domainLabel)+' · '+(SOURCE_LABELS[e.source]||e.source)+' · '+esc(dt)+
+        '</div>'+
+      '</div>'+
+      (e.status==='pending_review'?'<button class="btn btn-success" onclick="approveCorpusEntry(\''+esc(e.id)+'\')" style="flex-shrink:0;">✓ Approve</button>':'')+
+      '<button class="btn" onclick="openCorpusForm(\''+esc(e.id)+'\')" style="flex-shrink:0;">✎ Edit</button>'+
+      '<button class="btn" onclick="archiveCorpusEntry(\''+esc(e.id)+'\')" style="flex-shrink:0;color:#EF4444;border-color:#3A1A1A;">Archive</button>'+
+    '</div>'+
+    '<div style="background:#0A1628;border:1px solid #0F2040;border-left:3px solid '+color+';border-radius:8px;padding:12px 14px;font-size:12.5px;color:#CBD5E1;line-height:1.7;white-space:pre-wrap;margin-bottom:12px;">'+esc(e.content)+'</div>'+
+    (e.notes ? '<div style="font-size:11.5px;color:#64748B;line-height:1.6;font-style:italic;">'+esc(e.notes)+'</div>' : '')+
+    (e.reference ? '<div style="margin-top:10px;font-size:10.5px;color:#3A5A70;">Reference: '+esc(e.reference)+'</div>' : '')+
+    '<div style="margin-top:14px;">'+
+      '<button class="btn" onclick="downloadCorpusEntry(\''+esc(e.id)+'\')" style="font-size:11px;">⬇ Download as .md snippet</button>'+
+    '</div>'+
+  '</div>';
+  document.getElementById('corpus-detail').innerHTML = html;
+}
+
+function openCorpusForm(id) {
+  var e = id ? corpusData.find(function(x){ return x.id===id; }) : null;
+  document.getElementById('corpus-modal-title').textContent = e ? 'Edit Corpus Entry' : 'Add Corpus Entry';
+  document.getElementById('cf-id').value      = e ? e.id : '';
+  document.getElementById('cf-title').value   = e ? (e.title||'') : '';
+  document.getElementById('cf-content').value = e ? (e.content||'') : '';
+  document.getElementById('cf-notes').value   = e ? (e.notes||'') : '';
+  document.getElementById('cf-ref').value     = e ? (e.reference||'') : '';
+  document.getElementById('cf-domain').value  = e ? (e.domain||'general') : 'general';
+  document.getElementById('cf-source').value  = e ? (e.source||'manual') : 'manual';
+
+  /* Populate persona select */
+  var sel = document.getElementById('cf-persona');
+  var opts = '<option value="">General (all personas)</option>';
+  Object.values(personaData).forEach(function(p) {
+    opts += '<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>';
+  });
+  sel.innerHTML = opts;
+  if (e && e.persona_id) sel.value = e.persona_id;
+
+  document.getElementById('corpus-modal').style.display = 'flex';
+  setTimeout(function(){ document.getElementById('cf-title').focus(); }, 100);
+}
+
+function closeCorpusModal() { document.getElementById('corpus-modal').style.display = 'none'; }
+function closeCorpusModalBg(e) { if (e.target===document.getElementById('corpus-modal')) closeCorpusModal(); }
+
+async function saveCorpusEntry() {
+  var btn = document.getElementById('cf-save-btn');
+  var content = document.getElementById('cf-content').value.trim();
+  if (!content) { showToast('Content is required'); return; }
+
+  btn.textContent = 'Saving…'; btn.disabled = true;
+
+  var id = document.getElementById('cf-id').value || ('corpus-'+Date.now()+'-'+Math.random().toString(36).slice(2,6));
+  var personaSel = document.getElementById('cf-persona');
+
+  var entry = {
+    id:           id,
+    title:        document.getElementById('cf-title').value.trim() || null,
+    persona_id:   personaSel.value || null,
+    persona_name: personaSel.value ? (personaSel.options[personaSel.selectedIndex].text) : null,
+    domain:       document.getElementById('cf-domain').value || 'general',
+    source:       document.getElementById('cf-source').value || 'manual',
+    reference:    document.getElementById('cf-ref').value.trim() || null,
+    content:      content,
+    notes:        document.getElementById('cf-notes').value.trim() || null,
+    updated_at:   new Date().toISOString(),
+  };
+
+  var isNew = !document.getElementById('cf-id').value;
+  if (isNew) entry.created_at = entry.updated_at;
+
+  try {
+    var res = await adminFetch('/api/corpus' + (isNew ? '' : '/'+id), {
+      method: isNew ? 'POST' : 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(entry)
+    });
+
+    if (res.ok) {
+      closeCorpusModal();
+      await loadCorpus();
+      selectCorpusEntry(id);
+      showToast(isNew ? 'Entry added ✓' : 'Entry updated ✓');
+    } else {
+      showToast('Save failed — check connection');
+    }
+  } catch(e) {
+    showToast('Save failed — check connection');
+  }
+
+  btn.textContent = 'Save Entry'; btn.disabled = false;
+}
+
+async function approveCorpusEntry(id) {
+  try {
+    await adminFetch('/api/corpus/'+encodeURIComponent(id), {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({status:'active', updated_at: new Date().toISOString()})
+    });
+    corpusData = corpusData.map(function(e){ return e.id===id ? Object.assign({},e,{status:'active'}) : e; });
+    renderCorpusList();
+    selectCorpusEntry(id);
+    updateCorpusBadge();
+    showToast('Entry approved ✓');
+  } catch(e) { showToast('Could not approve — check connection'); }
+}
+
+async function archiveCorpusEntry(id) {
+  if (!confirm('Archive this entry? It will be hidden but not deleted.')) return;
+  try {
+    await adminFetch('/api/corpus/'+encodeURIComponent(id), {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({status:'archived', updated_at: new Date().toISOString()})
+    });
+    corpusData = corpusData.filter(function(e){ return e.id !== id; });
+    selectedCorpusId = null;
+    renderCorpusList();
+    document.getElementById('corpus-detail').innerHTML = '<div style="color:#2A3A50;font-size:12px;padding-top:40px;text-align:center;">Entry archived.</div>';
+    updateCorpusBadge();
+    showToast('Entry archived');
+  } catch(e) { showToast('Could not archive — check connection'); }
+}
+
+function downloadCorpusEntry(id) {
+  var e = corpusData.find(function(x){ return x.id===id; });
+  if (!e) return;
+  var dt = new Date().toISOString().slice(0,10);
+  var md = ['---',
+    'id: '+e.id,
+    'persona: '+(e.persona_name||'general'),
+    'domain: '+(e.domain||'general'),
+    'source: '+(e.source||'manual'),
+    (e.reference ? 'reference: '+e.reference : null),
+    'date: '+dt,
+    '---', '',
+    '## '+(e.title || (e.persona_name||'General')+' — '+(DOMAIN_INFO[e.domain]?DOMAIN_INFO[e.domain].label:e.domain||'General')),
+    '', e.content,
+    (e.notes ? '\n---\n*Notes: '+e.notes+'*' : ''), ''
+  ].filter(function(l){ return l!==null; }).join('\n');
+
+  var blob = new Blob([md], {type:'text/markdown'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href = url; a.download = 'corpus-'+(e.persona_id||'general')+'-'+dt+'.md'; a.click();
+  URL.revokeObjectURL(url);
+  showToast('Downloaded .md snippet ✓');
+}
+
+function exportCorpusMarkdown() {
+  if (!corpusData.length) { showToast('No entries to export'); return; }
+  var dt = new Date().toISOString().slice(0,10);
+  var sections = {};
+  corpusData.forEach(function(e) {
+    var key = e.persona_id || 'general';
+    if (!sections[key]) sections[key] = { name: e.persona_name || 'General', entries: [] };
+    sections[key].entries.push(e);
+  });
+
+  var md = ['# JUMO Master Corpus', 'Exported: '+dt, ''];
+  Object.keys(sections).forEach(function(k) {
+    var sec = sections[k];
+    md.push('## '+sec.name);
+    sec.entries.forEach(function(e) {
+      md.push('### '+(e.title || (DOMAIN_INFO[e.domain]?DOMAIN_INFO[e.domain].label:e.domain||'General')));
+      md.push('*Source: '+(SOURCE_LABELS[e.source]||e.source)+(e.reference?' · '+e.reference:'')+'*');
+      md.push('');
+      md.push(e.content);
+      md.push('');
+    });
+  });
+
+  var blob = new Blob([md.join('\n')], {type:'text/markdown'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href = url; a.download = 'jumo-corpus-'+dt+'.md'; a.click();
+  URL.revokeObjectURL(url);
+  showToast('Exported master-corpus.md ✓');
+}
+
+/* ════════════════════════════════════════════
+   PERSONA HEALTH DASHBOARD (Priority 4)
+   Shown at top of Personas tab
+   ════════════════════════════════════════════ */
+
+function renderHealthDashboard() {
+  var container = document.getElementById('health-dashboard');
+  if (!container) return;
+  var personas = Object.values(personaData);
+  if (!personas.length) { container.innerHTML = ''; return; }
+
+  var DOMAINS = ['health','family','economic','institutional','religious','education','language_profile'];
+
+  var html = '<div style="padding:10px 12px;border-bottom:1px solid #0F2040;">' +
+    '<div style="font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#3A5A70;margin-bottom:8px;">Persona Health</div>' +
+    '<div style="display:flex;flex-direction:column;gap:5px;">';
+
+  personas.forEach(function(p) {
+    var color = p.color || '#3A5A70';
+    var domains = p.domains || {};
+
+    /* Count filled domains */
+    var filled = DOMAINS.filter(function(d) { return domains[d] && domains[d].content && domains[d].content.trim(); }).length;
+    var validated = DOMAINS.filter(function(d) { return domains[d] && domains[d].source === 'partner_validated'; }).length;
+    var hasPrompt = !!(p.system_prompt || p.system_prompt_fragment);
+    var pct = Math.round((filled / DOMAINS.length) * 100);
+
+    /* Flag count from flagsData if loaded */
+    var openFlags = flagsData.filter(function(f){ return f.persona_id === p.id && f.status !== 'resolved'; }).length;
+
+    /* Determine overall status */
+    var statusColor = '#EF4444';
+    var statusLabel = 'Empty';
+    if (hasPrompt || filled === DOMAINS.length) { statusColor = '#22C55E'; statusLabel = 'Ready'; }
+    else if (filled >= 4) { statusColor = '#F59E0B'; statusLabel = 'Partial'; }
+    else if (filled > 0)  { statusColor = '#EF4444'; statusLabel = 'Sparse'; }
+
+    html += '<div onclick="selectPersona(\''+esc(p.id)+'\')" style="cursor:pointer;background:#040710;border:1px solid #0F2040;border-left:3px solid '+color+';border-radius:7px;padding:8px 10px;transition:background .12s;" onmouseover="this.style.background=\'#0A1628\'" onmouseout="this.style.background=\'#040710\'">' +
+      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">' +
+        '<div style="font-size:11.5px;font-weight:600;color:#CBD5E1;flex:1;">'+esc(p.name)+'</div>' +
+        (openFlags ? '<div style="font-size:10px;color:#EF4444;background:#3A1A1A;border-radius:4px;padding:1px 6px;">⚑ '+openFlags+'</div>' : '')+
+        '<div style="font-size:10px;font-weight:600;color:'+statusColor+';background:'+statusColor+'22;border-radius:4px;padding:1px 6px;">'+statusLabel+'</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:3px;margin-bottom:4px;">' +
+        DOMAINS.map(function(d) {
+          var dom = domains[d] || {};
+          var hasCont = dom.content && dom.content.trim();
+          var src = dom.source || '';
+          var dotColor = !hasCont ? '#1E2A3A'
+            : src === 'partner_validated' ? '#34D399'
+            : src === 'field_interview'   ? '#22D3EE'
+            : src === 'cultural_edit'     ? '#F59E0B'
+            : '#3A5A70';
+          return '<div title="'+esc((DOMAIN_INFO[d]?DOMAIN_INFO[d].label:d))+'" style="width:14px;height:14px;border-radius:3px;background:'+dotColor+';flex-shrink:0;"></div>';
+        }).join('') +
+        '<div style="flex:1;text-align:right;font-size:9.5px;color:#3A5A70;">'+filled+'/'+DOMAINS.length+(validated?' · '+validated+' validated':'')+'</div>'+
+      '</div>'+
+      /* Progress bar */
+      '<div style="height:3px;background:#0A1628;border-radius:2px;overflow:hidden;">' +
+        '<div style="height:100%;width:'+pct+'%;background:'+color+';border-radius:2px;transition:width .3s;"></div>' +
+      '</div>'+
+    '</div>';
+  });
+
+  html += '</div>';
+
+  /* Legend */
+  html += '<div style="display:flex;gap:10px;flex-wrap:wrap;padding-top:8px;padding-bottom:2px;">' +
+    [['#34D399','Partner validated'],['#22D3EE','Field interview'],['#F59E0B','Cultural edit'],['#3A5A70','AI/other'],['#1E2A3A','Empty']].map(function(pair){
+      return '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:#3A5A70;"><div style="width:10px;height:10px;border-radius:2px;background:'+pair[0]+';"></div>'+pair[1]+'</div>';
+    }).join('') +
+  '</div>';
+
+  html += '</div>';
+  container.innerHTML = html;
+}
+
 </script>
 </body>
 </html>
