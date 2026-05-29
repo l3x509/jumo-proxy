@@ -58,6 +58,55 @@ const limiter = rateLimit({
   message: { error: { message: 'Rate limit reached. Wait 15 minutes and try again.' } }
 });
 
+const broadcastLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  message: { error: { message: 'Broadcast rate limit reached. Wait 1 minute.' } }
+});
+
+/* ── Auth + storage guards ────────────────────────────────────────
+   Use these at the top of every route handler.
+   Returns false and sends the error response if auth fails,
+   so callers just do: if (!requireAdmin(req, res)) return;
+   ─────────────────────────────────────────────────────────────── */
+const getToken = (req) =>
+  req.query.token || req.headers['x-admin-token'] || req.headers['x-partner-token'] || '';
+
+const requireAdmin = (req, res) => {
+  const t = getToken(req);
+  if (!t || t !== ADMIN_TOKEN) {
+    res.status(401).json({ error: 'Admin token required.' });
+    return false;
+  }
+  return true;
+};
+
+const requirePartner = (req, res) => {
+  const t = getToken(req);
+  if (!t || (t !== PARTNER_TOKEN && t !== ADMIN_TOKEN)) {
+    res.status(401).json({ error: 'Partner token required.' });
+    return false;
+  }
+  return true;
+};
+
+const requireAccess = (req, res) => {
+  const t = req.headers['x-access-token'] || '';
+  if (!t || t !== ACCESS_TOKEN) {
+    res.status(401).json({ error: 'Invalid access token.' });
+    return false;
+  }
+  return true;
+};
+
+const requireStorage = (req, res) => {
+  if (!supabase) {
+    res.status(503).json({ error: 'Storage not configured.' });
+    return false;
+  }
+  return true;
+};
+
 /* ── Static files ── */
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/admin',   (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
@@ -201,13 +250,19 @@ app.get('/api/auth', (req, res) => {
      { system: '...', messages: [...] }               ← legacy: client provides prompt
    ═══════════════════════════════════════════════════════════ */
 app.post('/api/messages', limiter, async (req, res) => {
-  const token = req.headers['x-access-token'];
-  if (!token || token !== ACCESS_TOKEN)
-    return res.status(401).json({ error: { message: 'Invalid access token.' } });
+  if (!requireAccess(req, res)) return;
 
   if (!ANTHROPIC_KEY)
     return res.status(500).json({ error: { message: 'Server not configured.' } });
 
+  /* Apply tighter rate limit to broadcast requests */
+  if (req.headers['x-broadcast'] === '1') {
+    return broadcastLimiter(req, res, () => handleMessage(req, res));
+  }
+  return handleMessage(req, res);
+});
+
+async function handleMessage(req, res) {
   const { messages, system, persona_id } = req.body;
 
   if (!Array.isArray(messages) || !messages.length)
@@ -253,18 +308,14 @@ app.post('/api/messages', limiter, async (req, res) => {
     console.error('Proxy error:', err.message);
     res.status(502).json({ error: { message: 'Upstream error. Try again.' } });
   }
-});
+}
 
 /* ═══════════════════════════════════════════════════════════
    SESSIONS — original routes unchanged
    ═══════════════════════════════════════════════════════════ */
 app.post('/api/sessions', async (req, res) => {
-  const token = req.headers['x-access-token'];
-  if (!token || token !== ACCESS_TOKEN)
-    return res.status(401).json({ error: 'Invalid access token.' });
-
-  if (!supabase)
-    return res.status(503).json({ error: 'Session storage not configured.' });
+  if (!requireAccess(req, res))  return;
+  if (!requireStorage(req, res)) return;
 
   const {
     id, type, persona_name, persona_id, session_timestamp,
@@ -296,12 +347,8 @@ app.post('/api/sessions', async (req, res) => {
 });
 
 app.get('/api/sessions', async (req, res) => {
-  const token = req.headers['x-admin-token'] || req.query.token;
-  if (!token || token !== ADMIN_TOKEN)
-    return res.status(401).json({ error: 'Admin token required.' });
-
-  if (!supabase)
-    return res.status(503).json({ error: 'Session storage not configured.' });
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
 
   const limit   = Math.min(parseInt(req.query.limit) || 200, 500);
   const persona = req.query.persona;
@@ -335,9 +382,7 @@ app.get('/api/sessions', async (req, res) => {
  * only when a persona is selected.
  */
 app.get('/api/personas', async (req, res) => {
-  const token = req.query.token || req.headers['x-admin-token'];
-  if (!token || token !== ADMIN_TOKEN)
-    return res.status(401).json({ error: 'Admin token required.' });
+  if (!requireAdmin(req, res)) return;
 
   // Optional filters
   const statusFilter = req.query.status; // e.g. ?status=validated
@@ -404,9 +449,7 @@ app.get('/api/personas', async (req, res) => {
  * Returns complete data including all domain prose.
  */
 app.get('/api/personas/:id', async (req, res) => {
-  const token = req.query.token || req.headers['x-admin-token'];
-  if (!token || token !== ADMIN_TOKEN)
-    return res.status(401).json({ error: 'Admin token required.' });
+  if (!requireAdmin(req, res)) return;
 
   // Skip reserved sub-routes
   if (req.params.id === 'prompt') return res.status(400).json({ error: 'Use /api/personas/:id/prompt' });
@@ -419,9 +462,7 @@ app.get('/api/personas/:id', async (req, res) => {
 
 /* GET single persona prompt preview — admin only */
 app.get('/api/personas/:id/prompt', async (req, res) => {
-  const token = req.query.token || req.headers['x-admin-token'];
-  if (!token || token !== ADMIN_TOKEN)
-    return res.status(401).json({ error: 'Admin token required.' });
+  if (!requireAdmin(req, res)) return;
 
   const persona = await getPersona(req.params.id);
   if (!persona) return res.status(404).json({ error: 'Persona not found.' });
@@ -443,12 +484,8 @@ app.get('/api/personas/:id/prompt', async (req, res) => {
 
 /* PUT — save persona from admin portal */
 app.put('/api/personas/:id', async (req, res) => {
-  const token = req.query.token || req.headers['x-admin-token'];
-  if (!token || token !== ADMIN_TOKEN)
-    return res.status(401).json({ error: 'Admin token required.' });
-
-  if (!supabase)
-    return res.status(503).json({ error: 'Storage not configured.' });
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
 
   const { id } = req.params;
   const p = req.body;
@@ -463,7 +500,7 @@ app.put('/api/personas/:id', async (req, res) => {
     status:                 p.status                 || 'draft',
     basic:                  p.basic                  || {},
     domains:                p.domains                || {},
-    system_prompt:          p.system_prompt          || '',
+    system_prompt:          p.system_prompt || p.system_prompt_fragment || '',
     version:                p.version                || 1,
     updated_at: now,
   }, { onConflict: 'id' });
@@ -481,12 +518,8 @@ app.put('/api/personas/:id', async (req, res) => {
 
 /* POST — send persona to partner validation queue */
 app.post('/api/personas/:id/send-to-partner', async (req, res) => {
-  const token = req.query.token || req.headers['x-admin-token'];
-  if (!token || token !== ADMIN_TOKEN)
-    return res.status(401).json({ error: 'Admin token required.' });
-
-  if (!supabase)
-    return res.status(503).json({ error: 'Storage not configured.' });
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
 
   const persona = req.body;
   if (!persona || !persona.id)
@@ -534,13 +567,78 @@ app.post('/api/personas/:id/send-to-partner', async (req, res) => {
 /* ═══════════════════════════════════════════════════════════
    PARTNER — validation queue
    ═══════════════════════════════════════════════════════════ */
-app.get('/api/partner/queue', async (req, res) => {
-  const token = req.query.token;
-  if (!token || token !== PARTNER_TOKEN)
-    return res.status(401).json({ error: 'Partner token required.' });
+/* GET /api/partner/personas — basic persona info for context headers */
+app.get('/api/partner/personas', async (req, res) => {
+  if (!requirePartner(req, res)) return;
+  if (!requireStorage(req, res)) return;
+  const { data, error } = await supabase
+    .from('jumo_personas').select('id, name, color, status, basic');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
 
-  if (!supabase)
-    return res.status(503).json({ error: 'Storage not configured.' });
+/* POST /api/partner/send-response
+   Admin sends a Q&A pair from session log to partner for validation.
+   Creates a response_validation queue item. */
+app.post('/api/partner/send-response', async (req, res) => {
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
+
+  const { question_text, response_text, persona_id, persona_name, domain, admin_notes } = req.body;
+  if (!response_text) return res.status(400).json({ error: 'response_text required.' });
+
+  const now = new Date().toISOString();
+  const { error } = await supabase.from('jumo_validation_queue').insert({
+    id:           `rv-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+    persona_id:   persona_id   || null,
+    persona_name: persona_name || null,
+    domain:       domain       || 'general',
+    domain_label: domain       || 'Response',
+    content:      response_text,
+    question_text: question_text || null,
+    admin_notes:  admin_notes || (question_text ? 'Q: '+question_text : null),
+    item_type:    'response_validation',
+    status:       'pending',
+    created_at:   now,
+    updated_at:   now,
+  });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+/* POST /api/partner/notes
+   Partner submits unsolicited cultural observation.
+   Saved to jumo_corpus with status=pending_review for admin to approve. */
+app.post('/api/partner/notes', async (req, res) => {
+  if (!requirePartner(req, res)) return;
+  if (!requireStorage(req, res)) return;
+
+  const { persona_id, persona_name, domain, content, confidence, notes } = req.body;
+  if (!content || !content.trim()) return res.status(400).json({ error: 'content required.' });
+
+  const now = new Date().toISOString();
+  const { error } = await supabase.from('jumo_corpus').insert({
+    id:           `cn-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+    persona_id:   persona_id   || null,
+    persona_name: persona_name || null,
+    domain:       domain       || 'general',
+    source:       'partner_correction',
+    title:        'Partner cultural note' + (persona_name ? ' — '+persona_name : ''),
+    content:      content.trim(),
+    notes:        (notes||'') + (confidence ? ' [Confidence: '+confidence+']' : ''),
+    status:       'pending_review',   /* Admin must approve before it appears in corpus */
+    created_at:   now,
+    updated_at:   now,
+  });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+app.get('/api/partner/queue', async (req, res) => {
+  if (!requirePartner(req, res)) return;
+  if (!requireStorage(req, res)) return;
 
   const { data, error } = await supabase
     .from('jumo_validation_queue')
@@ -553,12 +651,8 @@ app.get('/api/partner/queue', async (req, res) => {
 });
 
 app.post('/api/partner/validate', async (req, res) => {
-  const token = req.query.token;
-  if (!token || token !== PARTNER_TOKEN)
-    return res.status(401).json({ error: 'Partner token required.' });
-
-  if (!supabase)
-    return res.status(503).json({ error: 'Storage not configured.' });
+  if (!requirePartner(req, res)) return;
+  if (!requireStorage(req, res)) return;
 
   const { verdicts, submitted_at } = req.body;
   if (!Array.isArray(verdicts) || !verdicts.length)
@@ -582,6 +676,19 @@ app.post('/api/partner/validate', async (req, res) => {
     console.error('Verdict update errors:', failed.map(r => r.error.message));
     return res.status(500).json({ error: 'Some verdicts failed.', count: failed.length });
   }
+
+  /* Sync corrections back to jumo_flags for flag_correction items */
+  const flagSyncs = verdicts
+    .filter(v => v.flag_id && v.notes && v.notes.trim())
+    .map(v =>
+      supabase.from('jumo_flags').update({
+        partner_correction: v.notes,
+        status: 'partner_responded',
+        updated_at: new Date().toISOString(),
+      }).eq('id', v.flag_id)
+    );
+
+  if (flagSyncs.length) await Promise.all(flagSyncs);
 
   res.json({ success: true, verdicts_saved: verdicts.length });
 });
@@ -620,12 +727,9 @@ app.post('/api/partner/validate', async (req, res) => {
 
 /* POST /api/flags — create flag from test shell */
 app.post('/api/flags', async (req, res) => {
-  const token = req.headers['x-access-token'];
-  if (!token || token !== ACCESS_TOKEN)
-    return res.status(401).json({ error: 'Invalid access token.' });
+  if (!requireAccess(req, res)) return;
 
-  if (!supabase)
-    return res.status(503).json({ error: 'Storage not configured.' });
+  if (!requireStorage(req, res)) return;
 
   const flag = req.body;
   if (!flag.persona_id || !flag.response_text)
@@ -693,12 +797,8 @@ app.post('/api/flags', async (req, res) => {
 
 /* GET /api/flags — admin: list all flags */
 app.get('/api/flags', async (req, res) => {
-  const token = req.query.token || req.headers['x-admin-token'];
-  if (!token || token !== ADMIN_TOKEN)
-    return res.status(401).json({ error: 'Admin token required.' });
-
-  if (!supabase)
-    return res.status(503).json({ error: 'Storage not configured.' });
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
 
   let q = supabase
     .from('jumo_flags')
@@ -716,12 +816,8 @@ app.get('/api/flags', async (req, res) => {
 
 /* PUT /api/flags/:id — admin: update status, add correction, resolve */
 app.put('/api/flags/:id', async (req, res) => {
-  const token = req.query.token || req.headers['x-admin-token'];
-  if (!token || token !== ADMIN_TOKEN)
-    return res.status(401).json({ error: 'Admin token required.' });
-
-  if (!supabase)
-    return res.status(503).json({ error: 'Storage not configured.' });
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
 
   const update = req.body;
   const { error } = await supabase
@@ -733,6 +829,102 @@ app.put('/api/flags/:id', async (req, res) => {
       resolved_to:        update.resolved_to   || null,
       partner_correction: update.partner_correction || null,
       updated_at: new Date().toISOString(),
+    })
+    .eq('id', req.params.id);
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+/* ═══════════════════════════════════════════════════════════
+   CORPUS
+   Admin manages cultural knowledge entries.
+
+   Requires jumo_corpus table in Supabase:
+
+   create table jumo_corpus (
+     id text primary key,
+     persona_id text,
+     persona_name text,
+     domain text default 'general',
+     source text default 'manual',
+     reference text,
+     title text,
+     content text not null,
+     notes text,
+     status text default 'active',
+     created_at timestamptz default now(),
+     updated_at timestamptz default now()
+   );
+   ═══════════════════════════════════════════════════════════ */
+
+/* GET /api/corpus — list active entries */
+app.get('/api/corpus', async (req, res) => {
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
+
+  let q = supabase
+    .from('jumo_corpus')
+    .select('*')
+    .in('status', ['active', 'pending_review'])
+    .order('created_at', { ascending: false });
+
+  if (req.query.persona_id) q = q.eq('persona_id', req.query.persona_id);
+  if (req.query.domain)     q = q.eq('domain', req.query.domain);
+
+  const { data, error } = await q;
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+/* POST /api/corpus — add entry */
+app.post('/api/corpus', async (req, res) => {
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
+
+  const entry = req.body;
+  if (!entry.content || !entry.content.trim())
+    return res.status(400).json({ error: 'content is required.' });
+
+  const now = new Date().toISOString();
+  const { error } = await supabase.from('jumo_corpus').insert({
+    id:           entry.id || `corpus-${Date.now()}`,
+    persona_id:   entry.persona_id   || null,
+    persona_name: entry.persona_name || null,
+    domain:       entry.domain       || 'general',
+    source:       entry.source       || 'manual',
+    reference:    entry.reference    || null,
+    title:        entry.title        || null,
+    content:      entry.content.trim(),
+    notes:        entry.notes        || null,
+    status:       'active',
+    created_at:   entry.created_at   || now,
+    updated_at:   now,
+  });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+/* PUT /api/corpus/:id — update entry */
+app.put('/api/corpus/:id', async (req, res) => {
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
+
+  const update = req.body;
+  const { error } = await supabase
+    .from('jumo_corpus')
+    .update({
+      title:        update.title        || null,
+      persona_id:   update.persona_id   || null,
+      persona_name: update.persona_name || null,
+      domain:       update.domain       || 'general',
+      source:       update.source       || 'manual',
+      reference:    update.reference    || null,
+      content:      update.content      || '',
+      notes:        update.notes        || null,
+      status:       update.status       || 'active',
+      updated_at:   new Date().toISOString(),
     })
     .eq('id', req.params.id);
 
