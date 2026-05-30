@@ -349,6 +349,46 @@
         </div>
       </div>
 
+      <!-- Display Info — controls test shell UI -->
+      <div class="domain-block" style="border-color:#1E3A5F;">
+        <div class="domain-hdr" onclick="toggleDomain('display')" style="background:#040C1A;">
+          <div class="domain-title" style="color:#7EC8E3;">Display Info</div>
+          <span style="font-size:10px;font-weight:400;color:#3A5A70;margin-left:4px;">— test shell UI fields</span>
+          <span class="domain-chevron open" id="chev-display">▶</span>
+        </div>
+        <div class="domain-body" id="dom-display">
+          <div style="font-size:10.5px;color:#3A5A70;margin-bottom:10px;line-height:1.5;">These fields populate the test shell directly — sidebar archetype, profile card, preset questions. Changes are live after Save with no deploy needed.</div>
+          <div class="field-row">
+            <div class="field-group">
+              <div class="field-lbl">Archetype Label</div>
+              <input type="text" class="field-input" id="f-archetype" placeholder="e.g. Rural Elder — Southern Haiti" oninput="markDirty()">
+            </div>
+            <div class="field-group">
+              <div class="field-lbl">Display Age</div>
+              <input type="text" class="field-input" id="f-age" placeholder="e.g. 58" oninput="markDirty()">
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field-group full">
+              <div class="field-lbl">Display Location</div>
+              <input type="text" class="field-input" id="f-location" placeholder="e.g. Jacmel, Sud, Haiti" oninput="markDirty()">
+            </div>
+          </div>
+          <div class="field-group full" style="margin-bottom:10px;">
+            <div class="field-lbl">Bio <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:9px;color:#2A3A50;">— shown on profile card in test shell</span></div>
+            <textarea class="field-textarea" id="f-bio" placeholder="1–2 sentences. Specific and grounded. Third person." oninput="markDirty()" style="min-height:60px;"></textarea>
+          </div>
+          <div class="field-group full" style="margin-bottom:10px;">
+            <div class="field-lbl">Tags <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:9px;color:#2A3A50;">— comma-separated</span></div>
+            <input type="text" class="field-input" id="f-tags" placeholder="e.g. rural, Catholic, matriarch, southern Haiti" oninput="markDirty()">
+          </div>
+          <div class="field-group full">
+            <div class="field-lbl">Preset Questions <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:9px;color:#2A3A50;">— one per line, clickable prompts in test shell</span></div>
+            <textarea class="field-textarea" id="f-questions" placeholder="Tell me about a time someone in your family got sick.&#10;What goes through your mind when you see an outside organization in your community?&#10;Walk me through what happened yesterday." oninput="markDirty()" style="min-height:110px;"></textarea>
+          </div>
+        </div>
+      </div>
+
       <!-- Basic Info -->
       <div class="domain-block">
         <div class="domain-hdr" onclick="toggleDomain('basic')">
@@ -421,7 +461,7 @@
       <!-- System prompt fragment -->
       <div class="pe-system-block">
         <div class="pe-system-lbl">System Prompt Fragment — feeds directly into Jumo</div>
-        <textarea class="pe-system-txt" id="f-system_prompt_fragment" placeholder="Compiled text injected into Jumo's system prompt for this persona. Edit domains above or write directly here." oninput="markDirty()"></textarea>
+        <textarea class="pe-system-txt" id="f-system_prompt" placeholder="Full persona text injected into Jumo's system prompt. If filled, this takes priority over domain sections above." oninput="markDirty()"></textarea>
       </div>
       <div class="pe-version" id="pe-version">—</div>
     </div>
@@ -987,7 +1027,7 @@ function buildDomainBlocks() {
 function makeDefaultPersona(id) {
   var doms={};
   DOMAINS.forEach(function(d){ doms[d]={content:'',source:'ai_generated',confidence:'low',notes:''}; });
-  return { id:id, name:id, color:'#3A5A70', status:'draft', basic:{}, domains:doms, system_prompt_fragment:'', version:1, updated_at:null };
+  return { id:id, name:id, color:'#3A5A70', status:'draft', archetype:'', age:'', location:'', bio:'', tags:[], questions:[], basic:{}, domains:doms, system_prompt:'', version:1, updated_at:null };
 }
 
 /* Helper: get color/name from list data (never hardcoded) */
@@ -1105,6 +1145,15 @@ function populateEditor(p) {
     var el=document.getElementById('f-'+f); if(el) el.value=b[f]||'';
   });
   document.getElementById('f-background').value=b.background||'';
+
+  /* ── Display Info fields ── */
+  document.getElementById('f-archetype').value = p.archetype || '';
+  document.getElementById('f-age').value        = String(p.age || '');
+  document.getElementById('f-location').value   = p.location  || '';
+  document.getElementById('f-bio').value        = p.bio       || '';
+  document.getElementById('f-tags').value       = Array.isArray(p.tags)      ? p.tags.join(', ')  : (p.tags      || '');
+  document.getElementById('f-questions').value  = Array.isArray(p.questions) ? p.questions.join('\n') : (p.questions || '');
+
   DOMAINS.forEach(function(d){
     var dom=(p.domains&&p.domains[d])||{content:'',source:'ai_generated',confidence:'low',notes:''};
     var c=document.getElementById('fd-'+d+'-content');
@@ -1117,7 +1166,7 @@ function populateEditor(p) {
     if(n) n.value=dom.notes||'';
     updateDomainBadge(d);
   });
-  document.getElementById('f-system_prompt_fragment').value=p.system_prompt_fragment||'';
+  document.getElementById('f-system_prompt').value = p.system_prompt || p.system_prompt_fragment || '';
   var upd=p.updated_at?new Date(p.updated_at).toLocaleString():'Never';
   document.getElementById('pe-version').textContent='Version '+(p.version||1)+' · Last saved '+upd;
   document.getElementById('persona-detail-empty').style.display='none';
@@ -1158,6 +1207,14 @@ function collectPersonaData() {
   var id=selectedPersonaId; if(!id) return null;
   var existing=personaData[id]||makeDefaultPersona(id);
   var p=JSON.parse(JSON.stringify(existing));
+  /* ── Display Info fields ── */
+  p.archetype = document.getElementById('f-archetype').value.trim();
+  p.age       = document.getElementById('f-age').value.trim();
+  p.location  = document.getElementById('f-location').value.trim();
+  p.bio       = document.getElementById('f-bio').value.trim();
+  p.tags      = document.getElementById('f-tags').value.split(',').map(function(t){ return t.trim(); }).filter(Boolean);
+  p.questions = document.getElementById('f-questions').value.split('\n').map(function(q){ return q.trim(); }).filter(Boolean);
+
   var b=p.basic||{};
   ['age_range','region','education_level','dominant_language','code_switch_frequency','location_type'].forEach(function(f){
     var el=document.getElementById('f-'+f); if(el) b[f]=el.value;
@@ -1176,7 +1233,9 @@ function collectPersonaData() {
     if(cf) p.domains[d].confidence=cf.value;
     if(n) p.domains[d].notes=n.value;
   });
-  p.system_prompt_fragment=document.getElementById('f-system_prompt_fragment').value;
+  /* ── System prompt — correct field name for server ── */
+  p.system_prompt = document.getElementById('f-system_prompt').value;
+  delete p.system_prompt_fragment;
   p.version=(existing.version||1)+(isDirty?1:0);
   p.updated_at=new Date().toISOString();
   return p;
@@ -2214,7 +2273,7 @@ async function confirmImport() {
 
   var existing=personaData[personaId]||makeDefaultPersona(personaId);
   var DOMAINS=['health','family','economic','institutional','religious','education','language_profile'];
-  if(_importParsed.systemPrompt) existing.system_prompt_fragment=_importParsed.systemPrompt;
+  if(_importParsed.systemPrompt) existing.system_prompt=_importParsed.systemPrompt;
   existing.basic=Object.assign(existing.basic||{},_importParsed.basic);
   DOMAINS.forEach(function(d){
     if(_importParsed.domainContent[d]){
