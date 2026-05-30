@@ -1,968 +1,485 @@
-const express = require('express');
-const rateLimit = require('express-rate-limit');
-const path     = require('path');
+'use strict';
 
-const app = express();
-app.use(express.json({ limit: '4mb' }));
+const express            = require('express');
+const path               = require('path');
+const fs                 = require('fs');
+const Anthropic          = require('@anthropic-ai/sdk');
+const { createClient }   = require('@supabase/supabase-js');
+const { randomUUID }     = require('crypto');
 
-const ACCESS_TOKEN  = process.env.ACCESS_TOKEN        || 'jumo-test';
-const ADMIN_TOKEN   = process.env.ADMIN_TOKEN         || ACCESS_TOKEN;
-const PARTNER_TOKEN = process.env.PARTNER_TOKEN       || 'partner-test';
-const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
-const SUPABASE_URL  = process.env.SUPABASE_URL;
-const SUPABASE_KEY  = process.env.SUPABASE_SERVICE_KEY;
-const PORT          = process.env.PORT || 3000;
+const app  = express();
+const PORT = process.env.PORT || 3000;
 
-/* ── Domain labels (for send-to-partner) ── */
-const DOMAIN_LABELS = {
-  health:           'Health & Wellbeing',
-  family:           'Family & Community',
-  economic:         'Economic Life',
-  institutional:    'Institutional Relationships',
-  religious:        'Religious & Spiritual Life',
-  education:        'Education & Knowledge',
-  language_profile: 'Language Profile',
-};
+/* ── Clients ─────────────────────────────────────────────────── */
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const supabase  = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
 
-/* ── Persona files (source of truth for baseline content) ── */
-let filePersonas = {};
-let buildSystemPrompt = (p) => p.system_prompt || p.system_prompt_fragment || '';
-let validatePersona   = () => ({ warnings: [] });
+/* ── Tokens ──────────────────────────────────────────────────── */
+const ACCESS_TOKEN  = process.env.ACCESS_TOKEN;
+const ADMIN_TOKEN   = process.env.ADMIN_TOKEN;
+const PARTNER_TOKEN = process.env.PARTNER_TOKEN;
 
-try {
-  filePersonas     = require('./personas/index');
-  const builder    = require('./personas/builder');
-  buildSystemPrompt = builder.buildSystemPrompt;
-  validatePersona   = builder.validatePersona;
-} catch(e) {
-  console.warn('⚠ personas/index.js or personas/builder.js not found — using Supabase only.');
-  console.warn('  Add personas/index.js and personas/builder.js to your repo.');
-}
+/* ── In-memory persona cache ─────────────────────────────────
+   Supabase is the runtime source of truth.
+   JSON files in /personas only seed new personas on first boot.
+   Admin panel saves → Supabase → cache refreshed immediately.
+   No redeploy needed for any content change.
+──────────────────────────────────────────────────────────────── */
+let personaCache = [];
 
-/*
- * personaCache — in-memory store used for every conversation.
- *
- * Priority on reads:
- *   1. Cache hit → return immediately
- *   2. Supabase (if connected) → load, cache, return
- *   3. File fallback → return from filePersonas
- *
- * Cache is invalidated when:
- *   - A PUT /api/personas/:id is called (admin saves)
- *   - Server restarts (cache is rebuilt from files + Supabase sync)
- */
-const personaCache = { ...filePersonas };
-
-/* ── Supabase ── */
-let supabase = null;
-if (SUPABASE_URL && SUPABASE_KEY) {
-  const { createClient } = require('@supabase/supabase-js');
-  supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-}
-
-/* ── Rate limiting ── */
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: { message: 'Rate limit reached. Wait 15 minutes and try again.' } }
-});
-
-const broadcastLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 5,
-  message: { error: { message: 'Broadcast rate limit reached. Wait 1 minute.' } }
-});
-
-/* ── Auth + storage guards ────────────────────────────────────────
-   Use these at the top of every route handler.
-   Returns false and sends the error response if auth fails,
-   so callers just do: if (!requireAdmin(req, res)) return;
-   ─────────────────────────────────────────────────────────────── */
-const getToken = (req) =>
-  req.query.token || req.headers['x-admin-token'] || req.headers['x-partner-token'] || '';
-
-const requireAdmin = (req, res) => {
-  const t = getToken(req);
-  if (!t || t !== ADMIN_TOKEN) {
-    res.status(401).json({ error: 'Admin token required.' });
-    return false;
-  }
-  return true;
-};
-
-const requirePartner = (req, res) => {
-  const t = getToken(req);
-  if (!t || (t !== PARTNER_TOKEN && t !== ADMIN_TOKEN)) {
-    res.status(401).json({ error: 'Partner token required.' });
-    return false;
-  }
-  return true;
-};
-
-const requireAccess = (req, res) => {
-  const t = req.headers['x-access-token'] || '';
-  if (!t || t !== ACCESS_TOKEN) {
-    res.status(401).json({ error: 'Invalid access token.' });
-    return false;
-  }
-  return true;
-};
-
-const requireStorage = (req, res) => {
-  if (!supabase) {
-    res.status(503).json({ error: 'Storage not configured.' });
-    return false;
-  }
-  return true;
-};
-
-/* ── Static files ── */
+/* ── Middleware ──────────────────────────────────────────────── */
+app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
-app.get('/admin',   (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
-app.get('/partner', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 
-/* ═══════════════════════════════════════════════════════════
-   PERSONA HELPERS
-   ═══════════════════════════════════════════════════════════ */
-
-/**
- * getPersona(id)
- * Returns a persona object from cache, Supabase, or file.
- * Always returns something if the persona ID is valid.
- */
-async function getPersona(id) {
-  // 1. Cache hit
-  if (personaCache[id]) return personaCache[id];
-
-  // 2. Supabase
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('jumo_personas')
-        .select('*')
-        .eq('id', id)
-        .single();
-      if (!error && data) {
-        personaCache[id] = data;
-        return data;
-      }
-    } catch (e) {
-      console.warn(`Supabase persona fetch failed for ${id}:`, e.message);
-    }
-  }
-
-  // 3. File fallback
-  return filePersonas[id] || null;
+/* ── Auth helpers ────────────────────────────────────────────── */
+function requireAuth(req, res, next) {
+  const token = req.headers['x-access-token'] || req.query.token;
+  if (!token || token !== ACCESS_TOKEN)
+    return res.status(401).json({ error: { message: 'Invalid access token.' } });
+  next();
 }
 
-/**
- * syncPersonasOnStartup()
- *
- * Batch version — 2 Supabase queries regardless of persona count.
- *
- * Query 1: fetch all existing persona IDs + versions from DB
- * Query 2: batch upsert only what changed (new or file-is-newer)
- *
- * Version rules:
- *   - Not in DB yet           → insert from file
- *   - File version > DB       → update DB (committed change wins)
- *   - DB version >= file      → load full DB record into cache (portal edit wins)
- *
- * To promote a portal edit to permanent:
- *   export JSON → bump version → commit → redeploy → file wins
- */
-async function syncPersonasOnStartup() {
-  if (!supabase) return;
-
-  const now = new Date().toISOString();
-
-  try {
-    // Query 1: get all existing persona id+version from DB (one round trip)
-    const { data: dbRows, error: fetchErr } = await supabase
-      .from('jumo_personas')
-      .select('id, version');
-
-    if (fetchErr) throw fetchErr;
-
-    const dbVersionMap = Object.fromEntries(
-      (dbRows || []).map(r => [r.id, r.version || 0])
-    );
-
-    const toUpsert    = [];  // new or file-is-newer
-    const toLoadFromDb = []; // DB is newer — need full record for cache
-
-    for (const [id, filePersona] of Object.entries(filePersonas)) {
-      const fileVersion = filePersona.version || 1;
-      const dbVersion   = dbVersionMap[id];
-
-      if (dbVersion === undefined) {
-        // New persona — not in DB yet
-        toUpsert.push({ ...filePersona, created_at: now, updated_at: now });
-        personaCache[id] = filePersona;
-      } else if (fileVersion > dbVersion) {
-        // File is newer — update DB
-        toUpsert.push({ ...filePersona, updated_at: now });
-        personaCache[id] = filePersona;
-      } else {
-        // DB is newer or equal — need to load full record
-        toLoadFromDb.push(id);
-      }
-    }
-
-    // Query 2a: batch upsert all new/updated personas (one round trip)
-    if (toUpsert.length) {
-      const { error: upsertErr } = await supabase
-        .from('jumo_personas')
-        .upsert(toUpsert, { onConflict: 'id' });
-      if (upsertErr) console.warn('  Upsert warning:', upsertErr.message);
-      else console.log(`  Upserted ${toUpsert.length} persona(s) from files`);
-    }
-
-    // Query 2b: load full records for DB-newer personas (one round trip)
-    if (toLoadFromDb.length) {
-      const { data: fullRecords, error: loadErr } = await supabase
-        .from('jumo_personas')
-        .select('*')
-        .in('id', toLoadFromDb);
-
-      if (!loadErr && fullRecords) {
-        fullRecords.forEach(p => { personaCache[p.id] = p; });
-        console.log(`  Loaded ${fullRecords.length} persona(s) from DB (portal edits)`);
-      }
-    }
-
-    console.log(`  Cache ready: ${Object.keys(personaCache).length} personas`);
-
-  } catch (e) {
-    console.warn('  Startup sync failed — using file personas:', e.message);
-    // personaCache already populated from filePersonas at declaration
-  }
+function requireAdmin(req, res, next) {
+  const token = req.headers['x-admin-token'] || req.query.token;
+  if (!token || token !== ADMIN_TOKEN)
+    return res.status(401).json({ error: { message: 'Admin access required.' } });
+  next();
 }
 
-/* ═══════════════════════════════════════════════════════════
-   AUTH — returns role based on token
-   ═══════════════════════════════════════════════════════════ */
-app.get('/api/auth', (req, res) => {
-  const token = req.query.token || req.headers['x-admin-token'];
-  if (!token)                  return res.status(401).json({ error: 'Token required.' });
-  if (token === ADMIN_TOKEN)   return res.json({ role: 'admin' });
-  if (token === PARTNER_TOKEN) return res.json({ role: 'partner' });
-  return res.status(401).json({ error: 'Invalid token.' });
-});
+function requirePartner(req, res, next) {
+  const token = req.headers['x-partner-token'] || req.query.token;
+  if (!token || (token !== PARTNER_TOKEN && token !== ADMIN_TOKEN))
+    return res.status(401).json({ error: { message: 'Partner access required.' } });
+  next();
+}
 
-/* ═══════════════════════════════════════════════════════════
-   ANTHROPIC PROXY
-   Now supports persona_id for server-side prompt resolution.
+/* ── Utility helpers ─────────────────────────────────────────── */
+function computeInit(name) {
+  const parts = (name || '').trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return (parts[0] || 'P').slice(0, 2).toUpperCase();
+}
 
-   Client sends either:
-     { persona_id: 'marie-ange', messages: [...] }   ← new: server builds prompt
-     { system: '...', messages: [...] }               ← legacy: client provides prompt
-   ═══════════════════════════════════════════════════════════ */
-app.post('/api/messages', limiter, async (req, res) => {
-  if (!requireAccess(req, res)) return;
+function domainStats(domains) {
+  const keys = ['health','family','economic','institutional','religious','education','language_profile'];
+  const filled = keys.filter(k => (domains||{})[k]?.content?.trim()).length;
+  return { filled, total: keys.length };
+}
 
-  if (!ANTHROPIC_KEY)
-    return res.status(500).json({ error: { message: 'Server not configured.' } });
+/* ── System prompt builder ───────────────────────────────────── */
+function buildSystemPrompt(persona) {
+  // Manual override: if system_prompt field has content, use it directly
+  if (persona.system_prompt?.trim()) return persona.system_prompt.trim();
 
-  /* Apply tighter rate limit to broadcast requests */
-  if (req.headers['x-broadcast'] === '1') {
-    return broadcastLimiter(req, res, () => handleMessage(req, res));
-  }
-  return handleMessage(req, res);
-});
-
-async function handleMessage(req, res) {
-  const { messages, system, persona_id } = req.body;
-
-  if (!Array.isArray(messages) || !messages.length)
-    return res.status(400).json({ error: { message: 'messages must be a non-empty array.' } });
-
-  // Resolve system prompt
-  let resolvedSystem = '';
-
-  if (persona_id) {
-    // Server-side resolution — client never sees the prompt
-    const persona = await getPersona(persona_id);
-    if (!persona) {
-      return res.status(404).json({ error: { message: `Unknown persona: ${persona_id}` } });
-    }
-    resolvedSystem = buildSystemPrompt(persona);
-  } else if (system) {
-    // Legacy: client-provided system prompt (test shell backward compat)
-    resolvedSystem = system;
-  }
-
-  const LANG = `\n\nLANGUAGE RULE — ALWAYS FOLLOW: Detect the language of the user's most recent message and respond entirely in that language. English → English only. Kreyòl → Kreyòl only. French → French only. This overrides all other language instructions.`;
-
-  const payload = {
-    model:      'claude-sonnet-4-6',
-    max_tokens: req.headers['x-broadcast'] === '1' ? 600 : 1500,
-    messages,
-    ...(resolvedSystem ? { system: resolvedSystem + LANG } : {}),
+  // Otherwise build from domain sections
+  const domains = persona.domains || {};
+  const domainLabels = {
+    health:           'Health & Wellbeing',
+    family:           'Family & Community',
+    economic:         'Economic Life',
+    institutional:    'Institutional Relationships',
+    religious:        'Religious & Spiritual Life',
+    education:        'Education & Knowledge',
+    language_profile: 'Language Profile'
   };
 
-  try {
-    const up = await fetch('https://api.anthropic.com/v1/messages', {
-      method:  'POST',
-      headers: {
-        'Content-Type':    'application/json',
-        'x-api-key':       ANTHROPIC_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify(payload),
-    });
-    const data = await up.json();
-    res.status(up.status).json(data);
-  } catch (err) {
-    console.error('Proxy error:', err.message);
-    res.status(502).json({ error: { message: 'Upstream error. Try again.' } });
+  const sections = [];
+  for (const [key, label] of Object.entries(domainLabels)) {
+    const d = domains[key];
+    if (d?.content?.trim()) sections.push(`## ${label}\n${d.content.trim()}`);
   }
+
+  if (!sections.length) return null; // No content yet — don't send empty prompt
+
+  const basic = persona.basic || {};
+  const profileLines = [
+    basic.age_range          && `Age: ${basic.age_range}`,
+    basic.region             && `Region: ${basic.region}`,
+    basic.location_type      && `Setting: ${basic.location_type}`,
+    basic.education_level    && `Education: ${basic.education_level}`,
+    basic.dominant_language  && `Primary language: ${basic.dominant_language}`,
+  ].filter(Boolean).join('\n');
+
+  return [
+    `You are ${persona.name}, a specific individual from Haiti.`,
+    `Respond as this person — not as an AI, not as a general representative of Haiti.`,
+    `Speak from personal experience. If you don't know something specific to your life, say so.`,
+    `Institutional context: you may be speaking with an NGO researcher, health professional, or international organization staff.`,
+    profileLines ? `\n## Profile\n${profileLines}` : '',
+    ...sections
+  ].filter(Boolean).join('\n\n');
 }
 
-/* ═══════════════════════════════════════════════════════════
-   SESSIONS — original routes unchanged
-   ═══════════════════════════════════════════════════════════ */
-app.post('/api/sessions', async (req, res) => {
-  if (!requireAccess(req, res))  return;
-  if (!requireStorage(req, res)) return;
+/* ══════════════════════════════════════════════
+   PERSONA CACHE MANAGEMENT
+   ══════════════════════════════════════════════ */
 
-  const {
-    id, type, persona_name, persona_id, session_timestamp,
-    exchanges, broadcast_question, broadcast_results,
-    researcher_notes, tester_id,
-  } = req.body;
+async function loadPersonasFromSupabase() {
+  const { data, error } = await supabase
+    .from('jumo_personas')
+    .select('*')
+    .order('name');
+  if (error) throw new Error(`Failed to load personas: ${error.message}`);
+  personaCache = data || [];
+  console.log(`[JUMO] ${personaCache.length} personas loaded from Supabase`);
+}
 
-  if (!id || !type)
-    return res.status(400).json({ error: 'id and type are required.' });
+function findPersona(id) {
+  return personaCache.find(p => p.id === id) || null;
+}
 
-  const { error } = await supabase.from('jumo_sessions').upsert({
-    id, type,
-    persona_name:       persona_name       || null,
-    persona_id:         persona_id         || null,
-    session_timestamp:  session_timestamp  || null,
-    exchanges:          exchanges          || [],
-    broadcast_question: broadcast_question || null,
-    broadcast_results:  broadcast_results  || null,
-    researcher_notes:   researcher_notes   || null,
-    tester_id:          tester_id          || null,
-    updated_at: new Date().toISOString(),
-  }, { onConflict: 'id' });
+async function refreshPersona(id) {
+  const { data, error } = await supabase
+    .from('jumo_personas')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (error || !data) return;
+  const idx = personaCache.findIndex(p => p.id === id);
+  if (idx >= 0) personaCache[idx] = data;
+  else personaCache.push(data);
+}
 
-  if (error) {
-    console.error('Session save error:', error.message);
-    return res.status(500).json({ error: error.message });
-  }
-  res.json({ success: true });
-});
+/* ── Seed from JSON files (insert only, never overwrites) ────── */
+async function seedFromJsonFiles() {
+  const personasDir = path.join(__dirname, 'personas');
+  if (!fs.existsSync(personasDir)) return;
 
-app.get('/api/sessions', async (req, res) => {
-  if (!requireAdmin(req, res))   return;
-  if (!requireStorage(req, res)) return;
+  const files = fs.readdirSync(personasDir).filter(f => f.endsWith('.json'));
+  if (!files.length) return;
 
-  const limit   = Math.min(parseInt(req.query.limit) || 200, 500);
-  const persona = req.query.persona;
-  const type    = req.query.type;
-  const tester  = req.query.tester;
+  const { data: existing } = await supabase.from('jumo_personas').select('id');
+  const existingIds = new Set((existing || []).map(r => r.id));
 
-  let q = supabase.from('jumo_sessions').select('*')
-    .order('created_at', { ascending: false }).limit(limit);
-  if (persona) q = q.eq('persona_id', persona);
-  if (type)    q = q.eq('type', type);
-  if (tester)  q = q.eq('tester_id', tester);
-
-  const { data, error } = await q;
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
-});
-
-/* ═══════════════════════════════════════════════════════════
-   PERSONAS — admin only
-   ═══════════════════════════════════════════════════════════ */
-
-/*
- * GET /api/personas — lightweight list for sidebar
- *
- * Returns only what the admin sidebar needs:
- * id, name, color, status, version, basic.region, basic.age_range,
- * and per-domain validation stats (no prose content).
- *
- * Scales to 100+ personas without sending megabytes to the browser.
- * The admin panel calls this for the list, then fetches full detail
- * only when a persona is selected.
- */
-app.get('/api/personas', async (req, res) => {
-  if (!requireAdmin(req, res)) return;
-
-  // Optional filters
-  const statusFilter = req.query.status; // e.g. ?status=validated
-  const search       = req.query.q;      // e.g. ?q=marie
-
-  let personas;
-
-  if (supabase) {
+  let seeded = 0;
+  for (const file of files) {
     try {
-      // Fetch only the fields the list view needs — not the full domain prose
-      let q = supabase
-        .from('jumo_personas')
-        .select('id, name, color, status, version, basic, domains, updated_at')
-        .order('name');
-      if (statusFilter) q = q.eq('status', statusFilter);
+      const p = JSON.parse(fs.readFileSync(path.join(personasDir, file), 'utf8'));
+      if (!p.id || existingIds.has(p.id)) continue; // Already in Supabase — skip
 
-      const { data, error } = await q;
-      if (!error && data) personas = data;
-    } catch (e) {
-      console.warn('Supabase personas list failed, using cache');
+      const { error } = await supabase.from('jumo_personas').insert({
+        id:            p.id,
+        name:          p.name          || '',
+        color:         p.color         || '#3A5A70',
+        status:        p.status        || 'draft',
+        version:       p.version       || 1,
+        init:          p.init          || computeInit(p.name),
+        archetype:     p.archetype     || '',
+        age:           String(p.age    || ''),
+        location:      p.location      || '',
+        bio:           p.bio           || '',
+        tags:          p.tags          || [],
+        questions:     p.questions     || [],
+        basic:         p.basic         || {},
+        domains:       p.domains       || {},
+        system_prompt: p.system_prompt || '',
+        updated_at:    new Date().toISOString()
+      });
+
+      if (!error) { seeded++; console.log(`[JUMO] Seeded: ${p.id}`); }
+      else console.warn(`[JUMO] Seed failed for ${p.id}: ${error.message}`);
+    } catch(e) {
+      console.warn(`[JUMO] Could not parse ${file}: ${e.message}`);
     }
   }
+  if (seeded > 0) console.log(`[JUMO] Seeded ${seeded} new persona(s)`);
+}
 
-  if (!personas) {
-    personas = Object.values(personaCache);
-  }
+/* ══════════════════════════════════════════════
+   ROUTES
+   ══════════════════════════════════════════════ */
 
-  // Build lightweight list items — strip prose, keep stats
-  const DOMAINS = ['health','family','economic','institutional','religious','education','language_profile'];
-  const list = personas
-    .map(p => {
-      const domains = p.domains || {};
-      const domainStats = DOMAINS.map(d => ({
-        domain:     d,
-        has_content: !!(domains[d] && domains[d].content && domains[d].content.trim()),
-        source:     (domains[d] && domains[d].source) || 'ai_generated',
-        confidence: (domains[d] && domains[d].confidence) || 'low',
-      }));
-      return {
-        id:          p.id,
-        name:        p.name,
-        color:       p.color,
-        status:      p.status,
-        version:     p.version,
-        updated_at:  p.updated_at,
-        age_range:   (p.basic && p.basic.age_range)  || '',
-        region:      (p.basic && p.basic.region)     || '',
-        domain_stats: domainStats,
-        domains_with_content:   domainStats.filter(d => d.has_content).length,
-        domains_validated:      domainStats.filter(d => d.source === 'partner_validated').length,
-        domains_total:          DOMAINS.length,
-      };
-    })
-    .filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()) ||
-                            p.region.toLowerCase().includes(search.toLowerCase()));
-
-  res.json(list);
+/* ── Auth check ──────────────────────────────── */
+app.get('/api/auth', (req, res) => {
+  const token = req.query.token;
+  if (token === ADMIN_TOKEN)   return res.json({ role: 'admin' });
+  if (token === PARTNER_TOKEN) return res.json({ role: 'partner' });
+  return res.status(401).json({ error: 'Invalid token' });
 });
 
-/*
- * GET /api/personas/:id — full persona detail
- *
- * Only called when admin selects a specific persona to edit.
- * Returns complete data including all domain prose.
- */
-app.get('/api/personas/:id', async (req, res) => {
-  if (!requireAdmin(req, res)) return;
+/* ── Personas list (no auth — same as personas.js was public) ── */
+app.get('/api/personas', (req, res) => {
+  res.json(personaCache.map(p => ({
+    id:           p.id,
+    name:         p.name,
+    color:        p.color        || '#3A5A70',
+    status:       p.status       || 'draft',
+    version:      p.version      || 1,
+    init:         p.init         || computeInit(p.name),
+    archetype:    p.archetype    || '',
+    age:          p.age          || '',
+    location:     p.location     || '',
+    bio:          p.bio          || '',
+    tags:         p.tags         || [],
+    questions:    p.questions    || [],
+    domain_stats: domainStats(p.domains)
+  })));
+});
 
-  // Skip reserved sub-routes
-  if (req.params.id === 'prompt') return res.status(400).json({ error: 'Use /api/personas/:id/prompt' });
-
-  const persona = await getPersona(req.params.id);
-  if (!persona) return res.status(404).json({ error: 'Persona not found.' });
-
+/* ── Full persona detail (admin) ─────────────── */
+app.get('/api/personas/:id', requireAdmin, (req, res) => {
+  const persona = findPersona(req.params.id);
+  if (!persona) return res.status(404).json({ error: 'Persona not found' });
   res.json(persona);
 });
 
-/* GET single persona prompt preview — admin only */
-app.get('/api/personas/:id/prompt', async (req, res) => {
-  if (!requireAdmin(req, res)) return;
+/* ── Save persona (admin) ────────────────────── */
+app.put('/api/personas/:id', requireAdmin, async (req, res) => {
+  const id      = req.params.id;
+  const current = findPersona(id);
+  if (!current) return res.status(404).json({ error: 'Persona not found' });
 
-  const persona = await getPersona(req.params.id);
-  if (!persona) return res.status(404).json({ error: 'Persona not found.' });
+  const {
+    name, color, status, init, archetype, age, location, bio,
+    tags, questions, basic, domains, system_prompt
+  } = req.body;
 
-  const prompt     = buildSystemPrompt(persona);
-  const validation = validatePersona(persona);
+  const update = {
+    name:          name          ?? current.name,
+    color:         color         ?? current.color,
+    status:        status        ?? current.status,
+    init:          init          || computeInit(name ?? current.name),
+    archetype:     archetype     ?? current.archetype,
+    age:           String(age    ?? current.age ?? ''),
+    location:      location      ?? current.location,
+    bio:           bio           ?? current.bio,
+    tags:          tags          ?? current.tags,
+    questions:     questions     ?? current.questions,
+    basic:         basic         ?? current.basic,
+    domains:       domains       ?? current.domains,
+    system_prompt: system_prompt ?? current.system_prompt,
+    version:       (current.version || 1) + 1,
+    updated_at:    new Date().toISOString()
+  };
 
-  res.json({
-    persona_id:  persona.id,
-    persona_name: persona.name,
-    version:     persona.version,
-    status:      persona.status,
-    prompt,
-    char_count:  prompt.length,
-    token_estimate: Math.ceil(prompt.length / 4),
-    validation,
-  });
+  const { error } = await supabase
+    .from('jumo_personas')
+    .update(update)
+    .eq('id', id);
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  // Refresh in-memory cache immediately — change is live without redeploy
+  await refreshPersona(id);
+  res.json({ success: true, version: update.version });
 });
 
-/* PUT — save persona from admin portal */
-app.put('/api/personas/:id', async (req, res) => {
-  if (!requireAdmin(req, res))   return;
-  if (!requireStorage(req, res)) return;
+/* ── System prompt preview (admin) ──────────── */
+app.get('/api/personas/:id/prompt', requireAdmin, (req, res) => {
+  const persona = findPersona(req.params.id);
+  if (!persona) return res.status(404).json({ error: 'Persona not found' });
 
-  const { id } = req.params;
-  const p = req.body;
+  const prompt   = buildSystemPrompt(persona);
+  const warnings = [];
+  if (!prompt)                        warnings.push('No content — system_prompt is empty and no domains have content yet');
+  if (persona.status === 'draft')     warnings.push('Status is still draft');
+  if (!persona.bio?.trim())           warnings.push('Bio is empty — UI profile card will be blank');
+  if (!persona.questions?.length)     warnings.push('No preset questions defined');
 
-  if (!id) return res.status(400).json({ error: 'Persona id required.' });
-
-  const now = new Date().toISOString();
-  const { error } = await supabase.from('jumo_personas').upsert({
-    id,
-    name:                   p.name                   || id,
-    color:                  p.color                  || '#3A5A70',
-    status:                 p.status                 || 'draft',
-    basic:                  p.basic                  || {},
-    domains:                p.domains                || {},
-    system_prompt:          p.system_prompt || p.system_prompt_fragment || '',
-    version:                p.version                || 1,
-    updated_at: now,
-  }, { onConflict: 'id' });
-
-  if (error) {
-    console.error('Persona save error:', error.message);
-    return res.status(500).json({ error: error.message });
-  }
-
-  // Invalidate cache — next request will reload from Supabase
-  delete personaCache[id];
-
-  res.json({ success: true });
+  res.json({ prompt: prompt || '[No content yet]', warnings });
 });
 
-/* POST — send persona to partner validation queue */
-app.post('/api/personas/:id/send-to-partner', async (req, res) => {
-  if (!requireAdmin(req, res))   return;
-  if (!requireStorage(req, res)) return;
+/* ── Send domains to partner ─────────────────── */
+app.post('/api/personas/:id/send-to-partner', requireAdmin, async (req, res) => {
+  const persona = findPersona(req.params.id);
+  if (!persona) return res.status(404).json({ error: 'Persona not found' });
 
-  const persona = req.body;
-  if (!persona || !persona.id)
-    return res.status(400).json({ error: 'Persona data required.' });
-
-  const now = new Date().toISOString();
-  const items = Object.keys(persona.domains || {})
-    .filter(d => persona.domains[d] && persona.domains[d].content && persona.domains[d].content.trim())
-    .map(d => ({
-      id:           `${persona.id}-${d}-${Date.now()}`,
+  const { domains: domainKeys, notes } = req.body;
+  const items = (domainKeys || []).map(key => {
+    const d = (persona.domains || {})[key];
+    return {
+      id:           randomUUID(),
       persona_id:   persona.id,
       persona_name: persona.name,
-      domain:       d,
-      domain_label: DOMAIN_LABELS[d] || d,
-      content:      persona.domains[d].content,
-      admin_notes:  persona.domains[d].notes || '',
+      domain:       key,
+      domain_label: key.replace('_', ' '),
+      content:      d?.content || '',
+      admin_notes:  notes || null,
       status:       'pending',
-      created_at:   now,
-      updated_at:   now,
-    }));
+      item_type:    'domain_validation',
+      submitted_at: new Date().toISOString()
+    };
+  }).filter(item => item.content);
 
-  if (!items.length)
-    return res.status(400).json({ error: 'No domain content to send. Fill in domain sections first.' });
-
-  // Clear existing pending items for this persona
-  await supabase
-    .from('jumo_validation_queue')
-    .delete()
-    .eq('persona_id', persona.id)
-    .eq('status', 'pending');
+  if (!items.length) return res.status(400).json({ error: 'No domains with content to send' });
 
   const { error } = await supabase.from('jumo_validation_queue').insert(items);
   if (error) return res.status(500).json({ error: error.message });
-
-  await supabase
-    .from('jumo_personas')
-    .update({ status: 'pending_review', updated_at: now })
-    .eq('id', persona.id);
-
-  delete personaCache[persona.id];
-
-  res.json({ success: true, items_sent: items.length });
+  res.json({ success: true, queued: items.length });
 });
 
-/* ═══════════════════════════════════════════════════════════
-   PARTNER — validation queue
-   ═══════════════════════════════════════════════════════════ */
-/* GET /api/partner/personas — basic persona info for context headers */
-app.get('/api/partner/personas', async (req, res) => {
-  if (!requirePartner(req, res)) return;
-  if (!requireStorage(req, res)) return;
-  const { data, error } = await supabase
-    .from('jumo_personas').select('id, name, color, status, basic');
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
-});
-
-/* POST /api/partner/send-response
-   Admin sends a Q&A pair from session log to partner for validation.
-   Creates a response_validation queue item. */
-app.post('/api/partner/send-response', async (req, res) => {
-  if (!requireAdmin(req, res))   return;
-  if (!requireStorage(req, res)) return;
-
-  const { question_text, response_text, persona_id, persona_name, domain, admin_notes } = req.body;
-  if (!response_text) return res.status(400).json({ error: 'response_text required.' });
-
-  const now = new Date().toISOString();
-  const { error } = await supabase.from('jumo_validation_queue').insert({
-    id:           `rv-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
-    persona_id:   persona_id   || null,
-    persona_name: persona_name || null,
-    domain:       domain       || 'general',
-    domain_label: domain       || 'Response',
-    content:      response_text,
-    question_text: question_text || null,
-    admin_notes:  admin_notes || (question_text ? 'Q: '+question_text : null),
-    item_type:    'response_validation',
-    status:       'pending',
-    created_at:   now,
-    updated_at:   now,
-  });
-
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
-});
-
-/* POST /api/partner/notes
-   Partner submits unsolicited cultural observation.
-   Saved to jumo_corpus with status=pending_review for admin to approve. */
-app.post('/api/partner/notes', async (req, res) => {
-  if (!requirePartner(req, res)) return;
-  if (!requireStorage(req, res)) return;
-
-  const { persona_id, persona_name, domain, content, confidence, notes } = req.body;
-  if (!content || !content.trim()) return res.status(400).json({ error: 'content required.' });
-
-  const now = new Date().toISOString();
-  const { error } = await supabase.from('jumo_corpus').insert({
-    id:           `cn-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
-    persona_id:   persona_id   || null,
-    persona_name: persona_name || null,
-    domain:       domain       || 'general',
-    source:       'partner_correction',
-    title:        'Partner cultural note' + (persona_name ? ' — '+persona_name : ''),
-    content:      content.trim(),
-    notes:        (notes||'') + (confidence ? ' [Confidence: '+confidence+']' : ''),
-    status:       'pending_review',   /* Admin must approve before it appears in corpus */
-    created_at:   now,
-    updated_at:   now,
-  });
-
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
-});
-
-app.get('/api/partner/queue', async (req, res) => {
-  if (!requirePartner(req, res)) return;
-  if (!requireStorage(req, res)) return;
-
+/* ── Partner queue ───────────────────────────── */
+app.get('/api/partner/queue', requirePartner, async (req, res) => {
   const { data, error } = await supabase
     .from('jumo_validation_queue')
     .select('*')
     .eq('status', 'pending')
-    .order('created_at', { ascending: true });
-
+    .order('created_at', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
 });
 
-app.post('/api/partner/validate', async (req, res) => {
-  if (!requirePartner(req, res)) return;
-  if (!requireStorage(req, res)) return;
-
-  const { verdicts, submitted_at } = req.body;
-  if (!Array.isArray(verdicts) || !verdicts.length)
-    return res.status(400).json({ error: 'verdicts must be a non-empty array.' });
-
-  const now = submitted_at || new Date().toISOString();
-  const updates = verdicts.map(v =>
-    supabase.from('jumo_validation_queue').update({
-      verdict:       v.verdict    || 'pending',
-      verdict_notes: v.notes      || '',
-      status:        'reviewed',
-      submitted_at:  now,
-      updated_at:    new Date().toISOString(),
-    }).eq('id', v.id)
-  );
-
-  const results = await Promise.all(updates);
-  const failed  = results.filter(r => r.error);
-
-  if (failed.length) {
-    console.error('Verdict update errors:', failed.map(r => r.error.message));
-    return res.status(500).json({ error: 'Some verdicts failed.', count: failed.length });
-  }
-
-  /* Sync corrections back to jumo_flags for flag_correction items */
-  const flagSyncs = verdicts
-    .filter(v => v.flag_id && v.notes && v.notes.trim())
-    .map(v =>
-      supabase.from('jumo_flags').update({
-        partner_correction: v.notes,
-        status: 'partner_responded',
-        updated_at: new Date().toISOString(),
-      }).eq('id', v.flag_id)
-    );
-
-  if (flagSyncs.length) await Promise.all(flagSyncs);
-
-  res.json({ success: true, verdicts_saved: verdicts.length });
+app.post('/api/partner/validate', requirePartner, async (req, res) => {
+  const { id, verdict, verdict_notes, partner_correction } = req.body;
+  const { error } = await supabase
+    .from('jumo_validation_queue')
+    .update({
+      verdict, verdict_notes, partner_correction,
+      status:     'reviewed',
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
 });
 
-/* ═══════════════════════════════════════════════════════════
-   FLAGS
-   Quality feedback loop: test shell → flag → partner → corpus
+/* ── Anthropic proxy ─────────────────────────── */
+app.post('/api/messages', requireAuth, async (req, res) => {
+  const { persona_id, system, messages } = req.body;
+  let systemPrompt = null;
 
-   Requires jumo_flags table in Supabase:
-
-   create table jumo_flags (
-     id text primary key,
-     session_id text,
-     persona_id text,
-     persona_name text,
-     persona_color text default '#3A5A70',
-     question_text text,
-     response_text text,
-     flag_type text default 'culturally_inaccurate',
-     domain_hint text,
-     admin_notes text,
-     send_to_partner boolean default false,
-     partner_correction text,
-     partner_notes text,
-     status text default 'open',
-     resolved_to text,
-     created_at timestamptz default now(),
-     updated_at timestamptz default now()
-   );
-
-   Also add item_type column to jumo_validation_queue:
-   alter table jumo_validation_queue
-     add column if not exists item_type text default 'domain_validation',
-     add column if not exists flag_id text;
-   ═══════════════════════════════════════════════════════════ */
-
-/* POST /api/flags — create flag from test shell */
-app.post('/api/flags', async (req, res) => {
-  if (!requireAccess(req, res)) return;
-
-  if (!requireStorage(req, res)) return;
-
-  const flag = req.body;
-  if (!flag.persona_id || !flag.response_text)
-    return res.status(400).json({ error: 'persona_id and response_text required.' });
-
-  const now = new Date().toISOString();
-  const flagId = flag.id || `flag-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
-
-  const { error } = await supabase.from('jumo_flags').insert({
-    id:            flagId,
-    session_id:    flag.session_id    || null,
-    persona_id:    flag.persona_id,
-    persona_name:  flag.persona_name  || flag.persona_id,
-    persona_color: flag.persona_color || '#3A5A70',
-    question_text: flag.question_text || '',
-    response_text: flag.response_text,
-    flag_type:     flag.flag_type     || 'culturally_inaccurate',
-    domain_hint:   flag.domain_hint   || null,
-    admin_notes:   flag.admin_notes   || null,
-    send_to_partner: flag.send_to_partner || false,
-    status:        flag.send_to_partner ? 'sent_to_partner' : 'open',
-    created_at:    now,
-    updated_at:    now,
-  });
-
-  if (error) {
-    console.error('Flag insert error:', error.message);
-    return res.status(500).json({ error: error.message });
+  if (persona_id) {
+    const persona = findPersona(persona_id);
+    if (!persona) return res.status(404).json({ error: { message: `Persona '${persona_id}' not found` } });
+    systemPrompt = buildSystemPrompt(persona);
+  } else if (system) {
+    systemPrompt = system; // Legacy fallback
   }
 
-  /* If send_to_partner: insert into validation_queue as a flag_correction item */
+  const requestBody = {
+    model:      'claude-sonnet-4-20250514',
+    max_tokens: 1024,
+    messages:   messages || []
+  };
+  if (systemPrompt) requestBody.system = systemPrompt;
+
+  try {
+    const response = await anthropic.messages.create(requestBody);
+    res.json(response);
+  } catch(e) {
+    res.status(500).json({ error: { message: e.message } });
+  }
+});
+
+/* ── Sessions ────────────────────────────────── */
+app.post('/api/sessions', requireAuth, async (req, res) => {
+  const {
+    id, type, persona_name, persona_id, session_timestamp,
+    exchanges, broadcast_question, broadcast_results,
+    researcher_notes, tester_id
+  } = req.body;
+
+  const { error } = await supabase
+    .from('jumo_sessions')
+    .upsert({
+      id, type: type || 'chat',
+      persona_name, persona_id, session_timestamp,
+      exchanges:          exchanges          || [],
+      broadcast_question: broadcast_question || null,
+      broadcast_results:  broadcast_results  || null,
+      researcher_notes:   researcher_notes   || null,
+      tester_id:          tester_id          || null,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'id' });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+app.get('/api/sessions', requireAdmin, async (req, res) => {
+  const { data, error } = await supabase
+    .from('jumo_sessions')
+    .select('*')
+    .order('updated_at', { ascending: false })
+    .limit(200);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+/* ── Flags ───────────────────────────────────── */
+app.post('/api/flags', requireAuth, async (req, res) => {
+  const flag = {
+    ...req.body,
+    status:     'open',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+
+  const { error } = await supabase.from('jumo_flags').insert(flag);
+  if (error) return res.status(500).json({ error: error.message });
+
+  // Auto-queue to partner if requested
   if (flag.send_to_partner) {
-    const domainLabel = flag.domain_hint
-      ? (DOMAIN_LABELS[flag.domain_hint] || flag.domain_hint)
-      : 'Response Correction';
-
-    const partnerNote = [
-      '⚑ WRONG RESPONSE — please provide the correct information',
-      '',
-      'Question asked:',
-      flag.question_text || '(not captured)',
-      '',
-      'Admin note:',
-      flag.admin_notes || '(none)',
-    ].join('\n');
-
     await supabase.from('jumo_validation_queue').insert({
-      id:           `flag-${flagId}`,
+      id:           randomUUID(),
       persona_id:   flag.persona_id,
-      persona_name: flag.persona_name || flag.persona_id,
-      domain:       flag.domain_hint  || 'general',
-      domain_label: domainLabel,
-      content:      flag.response_text,
-      admin_notes:  partnerNote,
-      item_type:    'flag_correction',
-      flag_id:      flagId,
+      persona_name: flag.persona_name,
+      domain:       flag.domain_hint   || null,
+      domain_label: flag.domain_hint   || 'general',
+      content:      flag.response_text || '',
+      admin_notes:  flag.admin_notes   || null,
       status:       'pending',
-      created_at:   now,
-      updated_at:   now,
+      item_type:    'flag_review',
+      flag_id:      flag.id,
+      submitted_at: new Date().toISOString()
     });
   }
 
-  res.json({ success: true, flag_id: flagId });
+  res.json({ success: true });
 });
 
-/* GET /api/flags — admin: list all flags */
-app.get('/api/flags', async (req, res) => {
-  if (!requireAdmin(req, res))   return;
-  if (!requireStorage(req, res)) return;
-
-  let q = supabase
+app.get('/api/flags', requireAdmin, async (req, res) => {
+  let query = supabase
     .from('jumo_flags')
     .select('*')
     .order('created_at', { ascending: false });
 
-  if (req.query.persona_id) q = q.eq('persona_id', req.query.persona_id);
-  if (req.query.status)     q = q.eq('status', req.query.status);
-  if (req.query.domain)     q = q.eq('domain_hint', req.query.domain);
+  if (req.query.persona_id) query = query.eq('persona_id', req.query.persona_id);
+  if (req.query.status)     query = query.eq('status',     req.query.status);
+  if (req.query.domain)     query = query.eq('domain_hint', req.query.domain);
 
-  const { data, error } = await q.limit(200);
+  const { data, error } = await query.limit(200);
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
 });
 
-/* PUT /api/flags/:id — admin: update status, add correction, resolve */
-app.put('/api/flags/:id', async (req, res) => {
-  if (!requireAdmin(req, res))   return;
-  if (!requireStorage(req, res)) return;
-
-  const update = req.body;
+app.put('/api/flags/:id', requireAdmin, async (req, res) => {
   const { error } = await supabase
     .from('jumo_flags')
-    .update({
-      status:             update.status,
-      admin_notes:        update.admin_notes,
-      domain_hint:        update.domain_hint,
-      resolved_to:        update.resolved_to   || null,
-      partner_correction: update.partner_correction || null,
-      updated_at: new Date().toISOString(),
-    })
+    .update({ ...req.body, updated_at: new Date().toISOString() })
     .eq('id', req.params.id);
-
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
 });
 
-/* ═══════════════════════════════════════════════════════════
-   CORPUS
-   Admin manages cultural knowledge entries.
-
-   Requires jumo_corpus table in Supabase:
-
-   create table jumo_corpus (
-     id text primary key,
-     persona_id text,
-     persona_name text,
-     domain text default 'general',
-     source text default 'manual',
-     reference text,
-     title text,
-     content text not null,
-     notes text,
-     status text default 'active',
-     created_at timestamptz default now(),
-     updated_at timestamptz default now()
-   );
-   ═══════════════════════════════════════════════════════════ */
-
-/* GET /api/corpus — list active entries */
-app.get('/api/corpus', async (req, res) => {
-  if (!requireAdmin(req, res))   return;
-  if (!requireStorage(req, res)) return;
-
-  let q = supabase
-    .from('jumo_corpus')
-    .select('*')
-    .in('status', ['active', 'pending_review'])
-    .order('created_at', { ascending: false });
-
-  if (req.query.persona_id) q = q.eq('persona_id', req.query.persona_id);
-  if (req.query.domain)     q = q.eq('domain', req.query.domain);
-
-  const { data, error } = await q;
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
-});
-
-/* POST /api/corpus — add entry */
-app.post('/api/corpus', async (req, res) => {
-  if (!requireAdmin(req, res))   return;
-  if (!requireStorage(req, res)) return;
-
-  const entry = req.body;
-  if (!entry.content || !entry.content.trim())
-    return res.status(400).json({ error: 'content is required.' });
-
-  const now = new Date().toISOString();
-  const { error } = await supabase.from('jumo_corpus').insert({
-    id:           entry.id || `corpus-${Date.now()}`,
-    persona_id:   entry.persona_id   || null,
-    persona_name: entry.persona_name || null,
-    domain:       entry.domain       || 'general',
-    source:       entry.source       || 'manual',
-    reference:    entry.reference    || null,
-    title:        entry.title        || null,
-    content:      entry.content.trim(),
-    notes:        entry.notes        || null,
-    status:       'active',
-    created_at:   entry.created_at   || now,
-    updated_at:   now,
-  });
-
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
-});
-
-/* PUT /api/corpus/:id — update entry */
-app.put('/api/corpus/:id', async (req, res) => {
-  if (!requireAdmin(req, res))   return;
-  if (!requireStorage(req, res)) return;
-
-  const update = req.body;
-  const { error } = await supabase
-    .from('jumo_corpus')
-    .update({
-      title:        update.title        || null,
-      persona_id:   update.persona_id   || null,
-      persona_name: update.persona_name || null,
-      domain:       update.domain       || 'general',
-      source:       update.source       || 'manual',
-      reference:    update.reference    || null,
-      content:      update.content      || '',
-      notes:        update.notes        || null,
-      status:       update.status       || 'active',
-      updated_at:   new Date().toISOString(),
-    })
-    .eq('id', req.params.id);
-
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
-});
-
-/* ── Health ── */
-app.get('/health', (req, res) => res.json({
-  status:         'ok',
-  supabase:       supabase        ? 'connected'        : 'not configured',
-  personas_loaded: Object.keys(personaCache).length,
-  partner_token:  PARTNER_TOKEN !== 'partner-test' ? 'configured' : 'using default',
-}));
-
-/* ── Start ── */
-app.listen(PORT, async () => {
-  console.log(`\nJUMO on port ${PORT}`);
-  console.log(`Anthropic key:   ${ANTHROPIC_KEY ? 'SET ✓' : 'MISSING ✗'}`);
-  console.log(`Supabase:        ${supabase ? 'connected ✓' : 'not configured'}`);
-  console.log(`Admin token:     ${ADMIN_TOKEN !== ACCESS_TOKEN ? 'separate ✓' : 'same as access token'}`);
-  console.log(`Partner token:   ${PARTNER_TOKEN !== 'partner-test' ? 'SET ✓' : 'default — set PARTNER_TOKEN'}`);
-  console.log(`Personas loaded: ${Object.keys(filePersonas).length} from files`);
-
-  if (supabase) {
-    console.log('\nSyncing personas with Supabase…');
-    await syncPersonasOnStartup();
-    console.log('Persona sync complete.\n');
+/* ── Cache refresh endpoint (admin — force reload from Supabase) */
+app.post('/api/admin/refresh-cache', requireAdmin, async (req, res) => {
+  try {
+    await loadPersonasFromSupabase();
+    res.json({ success: true, count: personaCache.length });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
   }
 });
+
+/* ══════════════════════════════════════════════
+   STARTUP
+   ══════════════════════════════════════════════ */
+async function start() {
+  try {
+    console.log('[JUMO] Starting…');
+    await seedFromJsonFiles();        // Insert new personas from JSON (never overwrites Supabase)
+    await loadPersonasFromSupabase(); // Load all personas into memory
+    app.listen(PORT, () => {
+      console.log(`[JUMO] Live on port ${PORT} — ${personaCache.length} personas ready`);
+    });
+  } catch(e) {
+    console.error('[JUMO] Startup error:', e.message);
+    process.exit(1);
+  }
+}
+
+start();
