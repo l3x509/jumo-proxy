@@ -302,7 +302,6 @@ app.post('/api/sessions', async (req, res) => {
 });
 
 app.get('/api/sessions', async (req, res) => {
-  if (!requireAdmin(req, res))   return;
   if (!requireStorage(req, res)) return;
 
   const limit   = Math.min(parseInt(req.query.limit) || 200, 500);
