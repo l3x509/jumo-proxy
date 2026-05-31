@@ -115,7 +115,6 @@
   .note-area:focus { outline:none; border-color:#1E3A5F; color:#94A3B8; }
   .note-area::placeholder { color:#1E3A5F; }
 
-  /* ── Flag type buttons ── */
   .flag-type-btn { background:#0A1628; border:1px solid #1E3A5F; border-radius:7px; color:#64748B; padding:8px 10px; font-size:11px; font-family:inherit; cursor:pointer; text-align:left; line-height:1.4; transition:all .12s; }
   .flag-type-btn:hover { background:#0F2040; color:#94A3B8; }
   .flag-type-btn.selected { background:#0C2B3A; border-color:#22D3EE; color:#22D3EE; }
@@ -158,6 +157,9 @@
     #messages { padding:10px; gap:10px; }
     #bc-inner { padding:8px; }
   }
+
+  #sidebar-nav { display:none; padding:8px; border-top:1px solid #0F2040; flex-shrink:0; gap:6px; flex-direction:column; }
+  @media (max-width: 768px) { #sidebar-nav { display:flex; } }
 </style>
 </head>
 <body>
@@ -181,7 +183,7 @@
   </div>
   <div id="hdr-status" style="display:flex;align-items:center;gap:6px;padding-left:8px;border-left:1px solid #0F2040">
     <div style="width:6px;height:6px;border-radius:50%;background:#22C55E;box-shadow:0 0 6px #22C55E;animation:pulse 2s infinite"></div>
-    <span style="font-size:11px;color:#3A5A70">10</span>
+    <span id="persona-count" style="font-size:11px;color:#3A5A70">…</span>
   </div>
 </div>
 
@@ -190,13 +192,18 @@
   <div id="left">
     <div id="left-hdr">
       <div class="lbl" style="flex:1;margin-bottom:0">Personas</div>
-      <div style="font-size:10px;color:#2A3A50">10</div>
+      <div id="left-count" style="font-size:10px;color:#2A3A50">…</div>
       <button id="sidebar-close" onclick="closeSidebar()" style="display:none;background:transparent;border:none;color:#64748B;font-size:18px;cursor:pointer;line-height:1;padding:2px 0 2px 6px;">&#x2715;</button>
     </div>
     <div id="sidebar-api-wrap">
       <input id="sidebar-api-input" type="password" placeholder="Access token…" autocomplete="off">
     </div>
-    <div id="left-list"></div>
+    <div id="left-list"><div style="padding:14px;font-size:11px;color:#2A3A50;">Loading…</div></div>
+    <div id="sidebar-nav">
+      <button class="btn" onclick="showBroadcast();closeSidebar();" style="justify-content:center;display:flex;">&#x2295; Broadcast</button>
+      <button class="btn" onclick="showCompare();closeSidebar();" style="justify-content:center;display:flex;">&#x21C6; Compare</button>
+      <a href="/admin" target="_blank" class="btn" style="text-decoration:none;justify-content:center;display:flex;">&#9881; Admin</a>
+    </div>
   </div>
 
   <div id="right">
@@ -205,7 +212,7 @@
       <div style="width:56px;height:56px;background:linear-gradient(135deg,#D4A017,#C0392B);border-radius:14px;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:800;font-size:22px;color:white;">J</div>
       <div style="text-align:center;">
         <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:18px;color:#4B7A8A;margin-bottom:6px;">JUMO Research System</div>
-        <div style="font-size:12px;color:#2A3A50;line-height:1.7;max-width:280px;">Select a persona to begin.<br>10 culturally calibrated Haitian voices.</div>
+        <div style="font-size:12px;color:#2A3A50;line-height:1.7;max-width:280px;">Select a persona to begin.<br>Culturally calibrated Haitian voices.</div>
       </div>
       <div style="font-size:10px;color:#1A2A3A;margin-top:4px;text-align:center;line-height:1.6;max-width:260px;">Enter the access token above<br>before starting a conversation.</div>
     </div>
@@ -228,10 +235,10 @@
     <div id="bc-panel" style="display:none;overflow-y:auto;flex:1;">
       <div id="bc-inner">
         <div style="margin-bottom:18px;">
-          <div class="lbl" style="margin-bottom:10px;">Broadcast to All 10 Personas</div>
+          <div class="lbl" style="margin-bottom:10px;">Broadcast to All Personas</div>
           <div style="display:flex;gap:8px;align-items:flex-start;">
-            <textarea id="bc-input" rows="2" placeholder="Type a question to ask all 10 personas simultaneously…" style="flex:1;background:#070D18;border:1px solid #1E3A5F;border-radius:8px;color:#E2E8F0;padding:10px 12px;font-size:13px;"></textarea>
-            <button id="bc-send" class="btn btn-primary" onclick="broadcast()" style="padding:10px 16px;">Ask All 10 →</button>
+            <textarea id="bc-input" rows="2" placeholder="Type a question to ask all personas simultaneously…" style="flex:1;background:#070D18;border:1px solid #1E3A5F;border-radius:8px;color:#E2E8F0;padding:10px 12px;font-size:13px;"></textarea>
+            <button id="bc-send" class="btn btn-primary" onclick="broadcast()" style="padding:10px 16px;">Ask All →</button>
           </div>
         </div>
         <div style="margin-bottom:16px;">
@@ -287,25 +294,20 @@
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════
-     FLAG MODAL
-     ═══════════════════════════════════════ -->
+<!-- FLAG MODAL -->
 <div id="flag-modal" onclick="closeFlagModalBg(event)" style="display:none;position:fixed;inset:0;background:rgba(2,5,10,.85);z-index:300;align-items:center;justify-content:center;padding:16px;">
   <div style="background:#070D18;border:1px solid #1E3A5F;border-radius:12px;width:100%;max-width:480px;overflow:hidden;">
-
     <div style="padding:13px 16px;border-bottom:1px solid #0F2040;display:flex;align-items:center;gap:10px;">
       <div style="font-size:13px;font-weight:600;color:#E2E8F0">⚑ Flag this response</div>
       <div style="flex:1"></div>
       <button onclick="closeFlagModal()" style="background:transparent;border:none;color:#3A5A70;font-size:18px;cursor:pointer;line-height:1;padding:2px;">✕</button>
     </div>
-
     <div style="padding:12px 16px;border-bottom:1px solid #0A1628;background:#040710;">
       <div style="font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#3A5A70;margin-bottom:5px;">What was asked</div>
       <div id="flag-q-preview" style="font-size:12px;color:#64748B;line-height:1.5;margin-bottom:10px;font-style:italic;"></div>
       <div style="font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#3A5A70;margin-bottom:5px;">What Jumo said (flagging this)</div>
       <div id="flag-r-preview" style="font-size:12px;color:#64748B;line-height:1.5;max-height:80px;overflow:hidden;"></div>
     </div>
-
     <div style="padding:12px 16px;border-bottom:1px solid #0A1628;">
       <div style="font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#3A5A70;margin-bottom:8px;">What's wrong?</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
@@ -317,7 +319,6 @@
         <button class="flag-type-btn" data-type="wrong_register" onclick="setFlagType('wrong_register')">💬 Wrong language / register</button>
       </div>
     </div>
-
     <div style="padding:12px 16px;border-bottom:1px solid #0A1628;display:flex;flex-direction:column;gap:8px;">
       <div>
         <div style="font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#3A5A70;margin-bottom:5px;">Which domain? (optional)</div>
@@ -337,7 +338,6 @@
         <textarea id="flag-notes" rows="2" placeholder="What's wrong or what's missing…" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#CBD5E1;padding:7px 9px;font-size:12px;font-family:inherit;resize:vertical;min-height:56px;line-height:1.6;"></textarea>
       </div>
     </div>
-
     <div style="padding:10px 16px;border-bottom:1px solid #0A1628;display:flex;align-items:center;gap:10px;">
       <input type="checkbox" id="flag-partner" style="width:16px;height:16px;accent-color:#34D399;cursor:pointer;">
       <label for="flag-partner" style="font-size:12px;color:#94A3B8;cursor:pointer;line-height:1.4;">
@@ -345,17 +345,75 @@
         <span style="display:block;font-size:10.5px;color:#3A5A70;margin-top:1px;">Partner will see the question, wrong response, and your notes</span>
       </label>
     </div>
-
     <div style="padding:12px 16px;display:flex;gap:8px;justify-content:flex-end;">
       <button onclick="closeFlagModal()" style="background:transparent;border:1px solid #1E3A5F;border-radius:6px;color:#64748B;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit;">Cancel</button>
       <button id="flag-submit-btn" onclick="submitFlag()" style="background:#1E3A5F;border:1px solid #2D5F8A;border-radius:6px;color:#E2E8F0;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Submit Flag</button>
     </div>
-
   </div>
 </div>
 
-<script src="/personas.js" onerror="document.getElementById('left-list').innerHTML='<div style=\"padding:14px;font-size:11.5px;color:#EF4444;line-height:1.6\">⚠ personas.js failed to load.</div>'"></script>
 <script>
+/* ═══════════════════════════
+   PERSONA DATA — loaded from /api/personas
+   personas.js is no longer used
+   ═══════════════════════════ */
+var PERSONAS = [];
+var BROADCAST_QUESTIONS = [
+  "What do you do when someone in your family gets very sick?",
+  "How do you feel about outside organizations coming to help your community?",
+  "Tell me about a time you had to navigate a hospital, school, or government office.",
+  "What does a typical week look like for you?",
+  "How are important decisions made in your household?",
+  "What do outsiders always get wrong about your community?",
+  "What's something you wish researchers asked more often?"
+];
+
+function computeDim(hex) {
+  if (!hex || hex[0] !== '#' || hex.length < 7) return '#060A14';
+  var r = parseInt(hex.slice(1,3), 16);
+  var g = parseInt(hex.slice(3,5), 16);
+  var b = parseInt(hex.slice(5,7), 16);
+  return 'rgb(' + Math.round(r*.08+2) + ',' + Math.round(g*.08+2) + ',' + Math.round(b*.1+4) + ')';
+}
+
+function computeInit(name) {
+  var parts = (name || '').trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return (parts[0] || 'P').slice(0, 2).toUpperCase();
+}
+
+async function loadPersonasFromAPI() {
+  try {
+    var res = await fetch('/api/personas');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var data = await res.json();
+    PERSONAS = (Array.isArray(data) ? data : []).map(function(p) {
+      return {
+        id:        p.id,
+        name:      p.name       || 'Unknown',
+        color:     p.color      || '#3A5A70',
+        dim:       computeDim(p.color || '#3A5A70'),
+        init:      p.init       || computeInit(p.name),
+        archetype: p.archetype  || p.name,
+        age:       p.age        || '—',
+        location:  p.location   || '—',
+        bio:       p.bio        || '',
+        tags:      Array.isArray(p.tags)      ? p.tags      : [],
+        questions: Array.isArray(p.questions) ? p.questions : []
+      };
+    });
+    var count = PERSONAS.length;
+    var badge = document.getElementById('persona-count');
+    if (badge) badge.textContent = count;
+    var lcount = document.getElementById('left-count');
+    if (lcount) lcount.textContent = count;
+  } catch(e) {
+    console.error('Persona load failed:', e);
+    document.getElementById('left-list').innerHTML =
+      '<div style="padding:14px;font-size:11.5px;color:#EF4444;line-height:1.6">⚠ Could not load personas.<br>Check server connection.</div>';
+  }
+}
+
 /* ═══════════════════════════
    STATE
    ═══════════════════════════ */
@@ -376,9 +434,7 @@ var compareMessagesB = [];
 var compareLoadingA = false;
 var compareLoadingB = false;
 var sessionNotes = {};
-var _supabaseSaveQueue = {};
 
-/* Flag state */
 var flagContext = null;
 var selectedFlagType = 'culturally_inaccurate';
 
@@ -450,7 +506,9 @@ window.addEventListener("resize", function() {
 /* ═══════════════════════════
    INIT
    ═══════════════════════════ */
-document.addEventListener("DOMContentLoaded", function() {
+document.addEventListener("DOMContentLoaded", async function() {
+  await loadPersonasFromAPI();
+
   loadSessionLog();
   loadNotes();
   buildPersonaList();
@@ -482,14 +540,18 @@ document.addEventListener("DOMContentLoaded", function() {
    ═══════════════════════════ */
 function buildPersonaList() {
   var list = document.getElementById("left-list");
+  if (!PERSONAS.length) {
+    list.innerHTML = '<div style="padding:14px;font-size:11.5px;color:#2A3A50;line-height:1.6;">No personas loaded.</div>';
+    return;
+  }
   var html = "";
   for (var i = 0; i < PERSONAS.length; i++) {
     var p = PERSONAS[i];
     html += "<div class=\"p-item\" id=\"pi-" + p.id + "\" style=\"--c:" + p.color + "\" onclick=\"selectPersona('" + p.id + "')\">" +
       "<div class=\"p-avatar\" style=\"background:" + p.dim + ";color:" + p.color + ";border:1px solid " + p.color + "44\">" + p.init + "</div>" +
       "<div style=\"flex:1;min-width:0\">" +
-        "<div class=\"p-name\">" + esc(p.name.split(" ")[0]) + " " + esc(p.name.split(" ")[1] || "") + "</div>" +
-        "<div class=\"p-arch\" style=\"color:" + p.color + "\">" + esc(p.archetype.split("—")[0].trim()) + "</div>" +
+        "<div class=\"p-name\">" + esc(p.name) + "</div>" +
+        "<div class=\"p-arch\" style=\"color:" + p.color + "\">" + esc((p.archetype || '').split("—")[0].trim()) + "</div>" +
       "</div></div>";
   }
   list.innerHTML = html;
@@ -531,7 +593,7 @@ function showProfile(p) {
       "<div style=\"flex:1\">" +
         "<div style=\"font-size:17px;font-weight:700;color:#E2E8F0;font-family:'Playfair Display',serif;line-height:1.2\">" + esc(p.name) + "</div>" +
         "<div style=\"font-size:12px;color:" + p.color + ";font-style:italic;margin-top:2px\">" + esc(p.archetype) + "</div>" +
-        "<div style=\"font-size:11px;color:#4B7A8A;margin-top:3px\">" + p.age + " yrs &middot; " + esc(p.location) + "</div>" +
+        "<div style=\"font-size:11px;color:#4B7A8A;margin-top:3px\">" + esc(String(p.age)) + " yrs &middot; " + esc(p.location) + "</div>" +
         "<div style=\"display:flex;gap:4px;flex-wrap:wrap;margin-top:7px\">" + tagsHtml + "</div>" +
       "</div>" +
       "<span style=\"font-size:9.5px;font-weight:600;letter-spacing:.06em;color:#F59E0B;background:#78350F44;border:1px solid #78350F88;border-radius:4px;padding:3px 8px;flex-shrink:0;white-space:nowrap\">First Encounter</span>" +
@@ -585,7 +647,7 @@ function renderChatHeader() {
     "<div style=\"width:38px;height:38px;min-width:38px;border-radius:9px;background:" + p.dim + ";display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:" + p.color + ";border:1px solid " + p.color + "66;\">" + p.init + "</div>" +
     "<div style=\"flex:1;min-width:0\">" +
       "<div style=\"font-weight:600;font-size:13.5px;color:#E2E8F0\">" + esc(p.name) + " <span style=\"color:" + p.color + ";font-style:italic;font-size:11.5px\">&#8212; " + esc(p.archetype.split("—")[1] ? p.archetype.split("—")[1].trim() : p.archetype) + "</span></div>" +
-      "<div style=\"font-size:10.5px;color:#4B7A8A\">" + p.age + " &middot; " + esc(p.location) + " &middot; " + tagsStr + "</div>" +
+      "<div style=\"font-size:10.5px;color:#4B7A8A\">" + esc(String(p.age)) + " &middot; " + esc(p.location) + " &middot; " + tagsStr + "</div>" +
     "</div>" +
     "<button class=\"btn\" onclick=\"resetConversation()\" style=\"font-size:10px;padding:3px 9px;flex-shrink:0\">↺ Reset</button>";
   var bioEl = document.getElementById("chat-bio");
@@ -649,7 +711,6 @@ function renderMessages() {
           "<div style=\"font-size:12px;color:#7EC8E3;line-height:1.65;white-space:pre-wrap\">" + esc(cached.text) + "</div>" +
         "</div>";
       }
-      /* ── Action buttons — Copy, Flag, Translate ── */
       transHtml = "<div style=\"margin-top:6px;display:flex;gap:5px;align-items:center;flex-wrap:wrap\">" +
         "<button class=\"btn\" onclick=\"copyMsg(" + msgIdx + ")\" style=\"font-size:10px;padding:3px 8px;color:#3A5A70\">⎘ Copy</button>" +
         "<button class=\"btn\" onclick=\"flagMsg(" + msgIdx + ")\" style=\"font-size:10px;padding:3px 8px;color:#EF4444;border-color:#3A1A1A\">⚑ Flag</button>" +
@@ -722,7 +783,7 @@ async function translateMsg(msgIdx, lang) {
 }
 
 /* ═══════════════════════════
-   SEND  — uses persona_id (server-side prompt)
+   SEND
    ═══════════════════════════ */
 function sendQ(i) {
   if (!currentPersona) return;
@@ -747,7 +808,7 @@ async function sendMsg(text) {
       method: "POST",
       headers: apiHeaders(),
       body: JSON.stringify({
-        persona_id: currentPersona.id,   /* server builds prompt from JSON file */
+        persona_id: currentPersona.id,
         messages: messages
       })
     });
@@ -773,7 +834,7 @@ async function sendMsg(text) {
 }
 
 /* ═══════════════════════════
-   BROADCAST — uses persona_id
+   BROADCAST
    ═══════════════════════════ */
 function showBroadcast() {
   setMode("broadcast");
@@ -834,7 +895,7 @@ async function broadcast() {
   await Promise.allSettled(PERSONAS.map(function(p){ return fetchOne(p); }));
   isBroadcasting = false;
   logBroadcastSession(q, broadcastResults);
-  if (btn) { btn.disabled = false; btn.textContent = "Ask All 10 →"; }
+  if (btn) { btn.disabled = false; btn.textContent = "Ask All →"; }
 }
 
 function renderBcResults(q) {
@@ -856,7 +917,7 @@ function renderBcResults(q) {
       "<div style=\"display:flex;align-items:center;gap:8px;margin-bottom:10px\">" +
         "<div style=\"width:28px;height:28px;border-radius:7px;background:" + p.dim + ";display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:" + p.color + ";flex-shrink:0\">" + p.init + "</div>" +
         "<div style=\"flex:1;min-width:0\"><div style=\"font-size:12px;font-weight:600;color:#E2E8F0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis\">" + esc(p.name) + "</div>" +
-        "<div style=\"font-size:10px;color:" + p.color + ";font-style:italic\">" + esc(p.archetype.split("—")[0].trim()) + " &middot; " + esc(p.location) + "</div></div>" +
+        "<div style=\"font-size:10px;color:" + p.color + ";font-style:italic\">" + esc((p.archetype || '').split("—")[0].trim()) + " &middot; " + esc(p.location) + "</div></div>" +
         continueBtn + "</div>" + body + "</div>";
   }
   container.innerHTML = html;
@@ -917,7 +978,7 @@ function logBroadcastSession(q, results) {
   var ts = new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
   var resultsCopy = {};
   for (var k in results) resultsCopy[k] = {status: results[k].status, text: results[k].text};
-  sessionLog.push({ type:"broadcast", persona:"Broadcast — All 10", timestamp: ts, question: q, results: resultsCopy, exchanges: [] });
+  sessionLog.push({ type:"broadcast", persona:"Broadcast — All", timestamp: ts, question: q, results: resultsCopy, exchanges: [] });
   updateLogBadge();
   saveSessionLog();
   saveSessionToServer(sessionLog[sessionLog.length - 1]);
@@ -1051,14 +1112,14 @@ function saveSessionToServer(session, noteIdx) {
 }
 
 /* ═══════════════════════════
-   COMPARE — uses persona_id
+   COMPARE
    ═══════════════════════════ */
 function showCompare() { setMode("compare"); buildCompareSelectors(); }
 
 function buildCompareSelectors() {
   var opts = '<option value="">Select persona…</option>';
   for (var i = 0; i < PERSONAS.length; i++) {
-    opts += '<option value="' + PERSONAS[i].id + '">' + esc(PERSONAS[i].name) + ' (' + PERSONAS[i].age + ')</option>';
+    opts += '<option value="' + PERSONAS[i].id + '">' + esc(PERSONAS[i].name) + ' (' + esc(String(PERSONAS[i].age)) + ')</option>';
   }
   var sa = document.getElementById("compare-sel-a");
   var sb = document.getElementById("compare-sel-b");
@@ -1078,7 +1139,7 @@ function renderCompareHdr(side) {
   hdr.innerHTML = "<div style='display:flex;align-items:center;gap:8px'>" +
     "<div style='width:28px;height:28px;border-radius:7px;background:" + p.dim + ";display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:" + p.color + ";flex-shrink:0'>" + p.init + "</div>" +
     "<div style='min-width:0'><div style='font-size:12px;font-weight:600;color:#E2E8F0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>" + esc(p.name) + "</div>" +
-    "<div style='font-size:10px;color:" + p.color + ";font-style:italic'>" + p.age + " &middot; " + esc(p.location) + "</div></div></div>";
+    "<div style='font-size:10px;color:" + p.color + ";font-style:italic'>" + esc(String(p.age)) + " &middot; " + esc(p.location) + "</div></div></div>";
 }
 
 async function runCompare() {
@@ -1181,7 +1242,7 @@ function exportCSV() {
   for (var i = 0; i < sessionLog.length; i++) {
     var s = sessionLog[i]; var note = sessionNotes[i] || "";
     if (s.type === "broadcast") {
-      rows.push([csvCell("broadcast"),csvCell(i),csvCell(s.timestamp),csvCell("All 10 Personas"),"","",csvCell("QUESTION"),csvCell(s.question),csvCell(note)].join(","));
+      rows.push([csvCell("broadcast"),csvCell(i),csvCell(s.timestamp),csvCell("All Personas"),"","",csvCell("QUESTION"),csvCell(s.question),csvCell(note)].join(","));
       for (var j = 0; j < PERSONAS.length; j++) {
         var pp = PERSONAS[j]; var rr = s.results && s.results[pp.id];
         if (!rr || rr.status !== "done") continue;
@@ -1197,7 +1258,7 @@ function exportCSV() {
     }
   }
   var csv = "\uFEFF" + rows.join("\n");
-  var blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+  var blob = new Blob([csv], {type:"text/csv;charset=utf-8;"}); 
   var url = URL.createObjectURL(blob);
   var a = document.createElement("a");
   a.href = url; a.download = "jumo-" + new Date().toISOString().slice(0,10) + ".csv"; a.click();
@@ -1253,13 +1314,11 @@ document.addEventListener("keydown", function(e) {
   }
 });
 
-/* ═══════════════════════════════════════
+/* ═══════════════════════════
    FLAG SYSTEM
-   ═══════════════════════════════════════ */
+   ═══════════════════════════ */
 function flagMsg(msgIdx) {
   if (!currentPersona) return;
-
-  /* Pair question and response by index */
   var assistantMsgs = messages.filter(function(m){ return m.role === 'assistant'; });
   var userMsgs      = messages.filter(function(m){ return m.role === 'user'; });
   var response = assistantMsgs[msgIdx] ? assistantMsgs[msgIdx].content : '';
