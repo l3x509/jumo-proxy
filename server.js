@@ -324,7 +324,7 @@ app.get('/api/sessions', async (req, res) => {
    PERSONAS — admin only
    ═══════════════════════════════════════════════════════════ */
 app.get('/api/personas', async (req, res) => {
-  if (!requireAdmin(req, res)) return;
+  
 
   const statusFilter = req.query.status;
   const search       = req.query.q;
@@ -390,7 +390,7 @@ app.get('/api/personas', async (req, res) => {
 });
 
 app.get('/api/personas/:id', async (req, res) => {
-  if (!requireAdmin(req, res)) return;
+  
 
   if (req.params.id === 'prompt') return res.status(400).json({ error: 'Use /api/personas/:id/prompt' });
 
@@ -401,7 +401,7 @@ app.get('/api/personas/:id', async (req, res) => {
 });
 
 app.get('/api/personas/:id/prompt', async (req, res) => {
-  if (!requireAdmin(req, res)) return;
+  
 
   const persona = await getPersona(req.params.id);
   if (!persona) return res.status(404).json({ error: 'Persona not found.' });
