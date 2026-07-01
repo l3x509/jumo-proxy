@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>JUMO</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+
+<!-- AUTH -->
+<div id="auth">
+  <div id="auth-box">
+    <div id="auth-title">JUMO</div>
+    <div id="auth-sub">Antre kòd ou / Enter your token</div>
+    <input id="auth-input" type="password" placeholder="Token…" autocomplete="off">
+    <button id="auth-btn" onclick="tryAuth()">Antre / Sign In</button>
+    <div id="auth-error">Kòd pa bon. / Invalid token.</div>
+  </div>
+</div>
+
+<!-- HEADER -->
+<div id="hdr" style="display:none">
+  <div style="width:26px;height:26px;background:linear-gradient(135deg,#D4A017,#C0392B);border-radius:7px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;color:white;flex-shrink:0">J</div>
+  <span style="font-family:'Georgia',serif;font-weight:700;font-size:15px">JUMO</span>
+  <span id="role-badge" style="font-size:10px;color:#3A5A70;padding:2px 8px;border:1px solid #0F2040;border-radius:4px"></span>
+  <div style="flex:1"></div>
+  <button class="btn" id="hdr-refresh" style="display:none" onclick="loadSessions()">&#x21BA; Refresh</button>
+  <button class="btn" id="hdr-export" style="display:none" onclick="exportCSV()">&#x2913; CSV</button>
+  <button class="btn" onclick="signOut()" style="color:#EF4444;border-color:#3A1A1A">Sign Out</button>
+</div>
+
+<!-- TAB BAR (admin only) -->
+<div id="tab-bar">
+  <button class="tab-btn tab-active" data-tab="sessions" onclick="showTab('sessions')">Sessions</button>
+  <button class="tab-btn" data-tab="personas" onclick="showTab('personas')">Personas</button>
+  <button class="tab-btn" data-tab="flags" onclick="showTab('flags')">⚑ Flags <span id="flags-badge" style="display:none;background:#7F1D1D;color:#FCA5A5;border-radius:99px;padding:1px 6px;font-size:10px;margin-left:2px">0</span></button>
+  <button class="tab-btn" data-tab="corpus" onclick="showTab('corpus')">Corpus <span id="corpus-badge" style="display:none;background:#1E3A5F;color:#7EC8E3;border-radius:99px;padding:1px 6px;font-size:10px;margin-left:2px">0</span></button>
+</div>
+
+<!-- ══════════ SESSIONS VIEW ══════════ -->
+<div id="sessions-view" class="view">
+  <div class="v-sidebar">
+    <div id="stats">
+      <div class="stat"><div class="stat-n" id="stat-total">—</div><div class="stat-l">Total</div></div>
+      <div class="stat"><div class="stat-n" id="stat-chat">—</div><div class="stat-l">Chats</div></div>
+      <div class="stat"><div class="stat-n" id="stat-bc">—</div><div class="stat-l">Broadcasts</div></div>
+      <div class="stat"><div class="stat-n" id="stat-testers">—</div><div class="stat-l">Testers</div></div>
+    </div>
+    <div id="filters">
+      <div class="lbl" style="margin-bottom:2px">Filters</div>
+      <div class="filter-row">
+        <select class="f-sel" id="f-type" onchange="applyFilters()">
+          <option value="">All types</option>
+          <option value="chat">Chat</option>
+          <option value="broadcast">Broadcast</option>
+          <option value="compare">Compare</option>
+        </select>
+        <select class="f-sel" id="f-persona" onchange="applyFilters()">
+          <option value="">All personas</option>
+        </select>
+      </div>
+      <div class="filter-row">
+        <select class="f-sel" id="f-tester" onchange="applyFilters()">
+          <option value="">All testers</option>
+        </select>
+        <button class="btn" onclick="clearFilters()" style="font-size:10px">Clear</button>
+      </div>
+    </div>
+    <div id="session-list"><div style="padding:12px;color:#2A3A50">Loading…</div></div>
+  </div>
+  <div id="detail">
+    <div id="detail-empty">Select a session to review</div>
+    <div id="detail-content" style="display:none"></div>
+  </div>
+</div>
+
+<!-- ══════════ PERSONAS VIEW ══════════ -->
+<div id="personas-view" class="view">
+  <div class="v-sidebar">
+    <div id="persona-list-header">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:#CBD5E1">Personas</div>
+        <div id="persona-summary" style="font-size:10px;color:#3A5A70;margin-top:1px">—</div>
+      </div>
+      <div style="display:flex;gap:5px;">
+        <button class="btn" onclick="document.getElementById('md-import-input').click()" style="font-size:10px;color:#22D3EE;border-color:#0E4A5A" title="Import persona from .md file">⬆ Import</button>
+        <input type="file" id="md-import-input" accept=".md,.txt,.text" style="display:none" onchange="handleMarkdownImport(event)">
+        <button class="btn" onclick="loadPersonas()" style="font-size:10px">&#x21BA;</button>
+      </div>
+    </div>
+    <div style="padding:6px 8px;border-bottom:1px solid #0F2040;flex-shrink:0;">
+      <input type="text" id="persona-search"
+        placeholder="Search personas…"
+        oninput="loadPersonas()"
+        style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:5px 8px;font-size:11.5px;font-family:inherit;">
+    </div>
+    <div id="health-dashboard" style="flex-shrink:0;border-bottom:1px solid #0F2040;overflow-y:auto;max-height:320px;"></div>
+    <div id="persona-list" style="flex:1;overflow-y:auto;padding:6px;"></div>
+    <div style="padding:10px 12px;border-top:1px solid #0F2040;flex-shrink:0;display:flex;gap:12px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:5px;font-size:9.5px;color:#3A5A70"><div class="status-dot draft"></div>Draft</div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:9.5px;color:#3A5A70"><div class="status-dot pending_review"></div>Pending</div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:9.5px;color:#3A5A70"><div class="status-dot validated"></div>Validated</div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:9.5px;color:#3A5A70"><div class="status-dot published"></div>Published</div>
+    </div>
+  </div>
+  <div class="v-detail">
+    <div id="persona-detail-empty">Select a persona to edit</div>
+    <div id="persona-editor">
+      <div class="pe-header">
+        <div class="pe-avatar-lg" id="pe-avatar"></div>
+        <div>
+          <div class="pe-name" id="pe-name">—</div>
+          <select class="pe-status-sel" id="pe-status" onchange="markDirty()">
+            <option value="draft">● Draft</option>
+            <option value="pending_review">◑ Pending Review</option>
+            <option value="validated">◉ Validated</option>
+            <option value="published">◎ Published</option>
+          </select>
+        </div>
+        <div class="pe-actions">
+          <button class="btn" onclick="previewPrompt()" title="See the exact system prompt Jumo uses for this persona">⚙ Preview Prompt</button>
+          <button class="btn" onclick="sendToPartner()">Send to Partner ↗</button>
+          <button class="btn btn-success" onclick="savePersona()">Save</button>
+        </div>
+      </div>
+
+      <!-- Display Info — controls test shell UI -->
+      <div class="domain-block" style="border-color:#1E3A5F;">
+        <div class="domain-hdr" onclick="toggleDomain('display')" style="background:#040C1A;">
+          <div class="domain-title" style="color:#7EC8E3;">Display Info</div>
+          <span style="font-size:10px;font-weight:400;color:#3A5A70;margin-left:4px;">— test shell UI fields</span>
+          <span class="domain-chevron open" id="chev-display">▶</span>
+        </div>
+        <div class="domain-body" id="dom-display">
+          <div style="font-size:10.5px;color:#3A5A70;margin-bottom:10px;line-height:1.5;">These fields populate the test shell directly — sidebar archetype, profile card, preset questions. Changes are live after Save with no deploy needed.</div>
+          <div class="field-row">
+            <div class="field-group">
+              <div class="field-lbl">Archetype Label</div>
+              <input type="text" class="field-input" id="f-archetype" placeholder="e.g. Rural Elder — Southern Haiti" oninput="markDirty()">
+            </div>
+            <div class="field-group">
+              <div class="field-lbl">Display Age</div>
+              <input type="text" class="field-input" id="f-age" placeholder="e.g. 58" oninput="markDirty()">
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field-group full">
+              <div class="field-lbl">Display Location</div>
+              <input type="text" class="field-input" id="f-location" placeholder="e.g. Jacmel, Sud, Haiti" oninput="markDirty()">
+            </div>
+          </div>
+          <div class="field-group full" style="margin-bottom:10px;">
+            <div class="field-lbl">Bio <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:9px;color:#2A3A50;">— shown on profile card in test shell</span></div>
+            <textarea class="field-textarea" id="f-bio" placeholder="1–2 sentences. Specific and grounded. Third person." oninput="markDirty()" style="min-height:60px;"></textarea>
+          </div>
+          <div class="field-group full" style="margin-bottom:10px;">
+            <div class="field-lbl">Tags <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:9px;color:#2A3A50;">— comma-separated</span></div>
+            <input type="text" class="field-input" id="f-tags" placeholder="e.g. rural, Catholic, matriarch, southern Haiti" oninput="markDirty()">
+          </div>
+          <div class="field-group full">
+            <div class="field-lbl">Preset Questions <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:9px;color:#2A3A50;">— one per line, clickable prompts in test shell</span></div>
+            <textarea class="field-textarea" id="f-questions" placeholder="Tell me about a time someone in your family got sick.&#10;What goes through your mind when you see an outside organization in your community?&#10;Walk me through what happened yesterday." oninput="markDirty()" style="min-height:110px;"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Basic Info -->
+      <div class="domain-block">
+        <div class="domain-hdr" onclick="toggleDomain('basic')">
+          <div class="domain-title">Basic Profile</div>
+          <span class="domain-chevron open" id="chev-basic">▶</span>
+        </div>
+        <div class="domain-body" id="dom-basic">
+          <div class="field-row">
+            <div class="field-group"><div class="field-lbl">Age Range</div><input type="text" class="field-input" id="f-age_range" placeholder="e.g. 45–55" oninput="markDirty()"></div>
+            <div class="field-group"><div class="field-lbl">Region</div><input type="text" class="field-input" id="f-region" placeholder="e.g. Léogâne" oninput="markDirty()"></div>
+          </div>
+          <div class="field-row">
+            <div class="field-group">
+              <div class="field-lbl">Education</div>
+              <select class="field-select" id="f-education_level" onchange="markDirty()">
+                <option value="">— select —</option>
+                <option value="none">No formal education</option>
+                <option value="primary">Primary school</option>
+                <option value="secondary">Secondary school</option>
+                <option value="university">University</option>
+                <option value="vocational">Vocational / Trade</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <div class="field-lbl">Dominant Language</div>
+              <select class="field-select" id="f-dominant_language" onchange="markDirty()">
+                <option value="">— select —</option>
+                <option value="creole">Haitian Creole</option>
+                <option value="french">French</option>
+                <option value="english">English</option>
+                <option value="mixed_fr">Mixed (Creole/French)</option>
+                <option value="mixed_en">Mixed (Creole/English)</option>
+              </select>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field-group">
+              <div class="field-lbl">Code-Switching</div>
+              <select class="field-select" id="f-code_switch_frequency" onchange="markDirty()">
+                <option value="">— select —</option>
+                <option value="never">Never</option>
+                <option value="occasional">Occasional</option>
+                <option value="frequent">Frequent</option>
+                <option value="constant">Constant</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <div class="field-lbl">Location Type</div>
+              <select class="field-select" id="f-location_type" onchange="markDirty()">
+                <option value="">— select —</option>
+                <option value="rural">Rural Haiti</option>
+                <option value="urban_haiti">Urban Haiti</option>
+                <option value="port_au_prince">Port-au-Prince</option>
+                <option value="diaspora_us">Diaspora — US</option>
+                <option value="diaspora_canada">Diaspora — Canada</option>
+                <option value="diaspora_other">Diaspora — Other</option>
+              </select>
+            </div>
+          </div>
+          <div class="field-group full" style="margin-top:2px">
+            <div class="field-lbl">Background</div>
+            <textarea class="field-textarea" id="f-background" placeholder="Brief narrative of this persona's life context…" oninput="markDirty()" style="min-height:65px"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Domain sections — generated by JS to avoid repetition -->
+      <div id="domain-blocks-container"></div>
+
+      <!-- ═══════════════════════════════════════
+           VOICE & BEHAVIOR EDITOR (PATCH APPLIED)
+           ═══════════════════════════════════════ -->
+      <div id="jumo-voice-editor" style="background:#040C1A;border:2px solid #2D5F8A;border-radius:8px;padding:14px 16px;margin-bottom:8px;">
+        <div style="font-size:12px;font-weight:600;color:#7EC8E3;margin-bottom:12px;">🗣️ Vwa &amp; Konpòtman <span style="font-weight:normal;font-size:10.5px;color:#3A5A70;">— strongest lever for authentic responses</span></div>
+        <div class="field-group full" style="margin-bottom:10px;">
+          <div class="field-lbl">Voice anchor <span style="font-weight:normal;text-transform:none;letter-spacing:0;font-size:9px;color:#2A3A50;">— 3–5 sentences IN the persona's exact voice</span></div>
+          <textarea class="field-textarea" id="ve_voice_anchor" rows="3" placeholder="Mwen pa bezwen ou eksplike m sa doktè a di — mwen konnen kò m…" oninput="markDirty()" style="min-height:60px;"></textarea>
+        </div>
+        <div class="field-group full" style="margin-bottom:10px;">
+          <div class="field-lbl">Voice examples <span style="font-weight:normal;text-transform:none;letter-spacing:0;font-size:9px;color:#2A3A50;">— Q/A pairs injected last in prompt. Aim for 5–8.</span></div>
+          <div id="ve_examples_list" style="display:flex;flex-direction:column;gap:5px;margin-bottom:6px;"></div>
+          <button type="button" id="ve_add_example" class="btn" style="font-size:10.5px;">+ Add example pair</button>
+        </div>
+        <div class="field-group full" style="margin-bottom:10px;">
+          <div class="field-lbl">Refusal patterns <span style="font-weight:normal;text-transform:none;letter-spacing:0;font-size:9px;color:#2A3A50;">— one per line — things this persona would NEVER say or do</span></div>
+          <textarea class="field-textarea" id="ve_refusal_patterns" rows="3" placeholder="Pap janm itilize jagon medikal&#10;Pap diskite zafè lajan ak yon etranje" oninput="markDirty()" style="min-height:55px;"></textarea>
+        </div>
+        <div class="field-group full">
+          <div class="field-lbl">Contradictions <span style="font-weight:normal;text-transform:none;letter-spacing:0;font-size:9px;color:#2A3A50;">— one per line — internal tensions they hold but don't tell everyone</span></div>
+          <textarea class="field-textarea" id="ve_contradictions" rows="3" placeholder="Ale legliz chak dimanch men konsilte yon ougan an sekrè&#10;Kritike diaspora a men depann de lajan yo voye" oninput="markDirty()" style="min-height:55px;"></textarea>
+        </div>
+      </div>
+
+      <!-- System prompt fragment -->
+      <div class="pe-system-block">
+        <div class="pe-system-lbl">System Prompt Fragment — feeds directly into Jumo</div>
+        <textarea class="pe-system-txt" id="f-system_prompt" placeholder="Full persona text injected into Jumo's system prompt. If filled, this takes priority over domain sections above." oninput="markDirty()"></textarea>
+      </div>
+      <div class="pe-version" id="pe-version">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ PARTNER VIEW ══════════ -->
+<div id="partner-view">
+  <div id="offline-bar">⚠ Ou pa konekte — travay ou ap sove otomatikman</div>
+  <div class="partner-pad">
+    <div class="progress-wrap anim">
+      <div class="progress-label"><span>Pwogrè revizyon</span><span id="prog-pct">0%</span></div>
+      <div class="progress-bar-bg"><div class="progress-bar-fill" id="prog-bar" style="width:0%"></div></div>
+      <div class="progress-count" id="prog-count">0 / 0 eleman revize</div>
+    </div>
+    <div style="padding:0 0 10px;display:flex;justify-content:flex-end;">
+      <button onclick="openCulturalNoteModal()" style="background:#0A1628;border:1px solid #1E3A5F;border-radius:7px;color:#94A3B8;padding:7px 14px;font-size:11.5px;cursor:pointer;font-family:inherit;">💡 Ajoute nòt kiltirèl</button>
+    </div>
+    <div id="p-items-container"></div>
+    <div id="partner-empty">Pa gen eleman pou revize kounye a.<br>Admin pral voye eleman bientôt.</div>
+  </div>
+  <div id="partner-success">
+    <div class="p-success-icon">✓</div>
+    <div class="p-success-title">Soumèt avèk siksè!</div>
+    <div class="p-success-sub">Repons ou yo voye bay ekip la. Mèsi pou travay ou!</div>
+    <button class="btn" onclick="partnerReset()" style="margin-top:8px">Rekòmanse</button>
+  </div>
+  <div class="partner-submit-bar">
+    <button class="partner-submit-btn" id="p-submit-btn" onclick="partnerSubmit()" disabled>Soumèt tout repons yo</button>
+    <div class="partner-hint" id="p-submit-hint">Revize tout eleman yo anvan ou soumèt</div>
+  </div>
+</div>
+
+<!-- ══════════ FLAGS VIEW ══════════ -->
+<div id="flags-view" class="view" style="overflow:hidden;">
+  <div class="v-sidebar">
+    <div style="padding:10px 12px;border-bottom:1px solid #0F2040;flex-shrink:0;">
+      <div style="font-size:12px;font-weight:600;color:#CBD5E1;margin-bottom:8px;">⚑ Flagged Responses</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <select id="flag-filter-status" onchange="loadFlags()" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:5px 8px;font-size:11.5px;font-family:inherit;">
+          <option value="">All statuses</option>
+          <option value="open">Open</option>
+          <option value="sent_to_partner">Sent to partner</option>
+          <option value="partner_responded">Partner responded</option>
+          <option value="resolved">Resolved</option>
+        </select>
+        <select id="flag-filter-persona" onchange="loadFlags()" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:5px 8px;font-size:11.5px;font-family:inherit;">
+          <option value="">All personas</option>
+        </select>
+      </div>
+    </div>
+    <div id="flags-list" style="flex:1;overflow-y:auto;padding:6px;"></div>
+  </div>
+  <div class="v-detail" id="flag-detail">
+    <div style="color:#2A3A50;font-size:12px;padding-top:40px;text-align:center;">Select a flag to review</div>
+  </div>
+</div>
+
+<!-- ══════════ CORPUS VIEW ══════════ -->
+<div id="corpus-view" class="view" style="overflow:hidden;">
+  <div class="v-sidebar">
+    <div style="padding:10px 12px;border-bottom:1px solid #0F2040;flex-shrink:0;">
+      <div style="font-size:12px;font-weight:600;color:#CBD5E1;margin-bottom:8px;">Corpus</div>
+      <button class="btn btn-primary" onclick="openCorpusForm(null)" style="width:100%;margin-bottom:8px;">+ Add Entry</button>
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <select id="corpus-filter-persona" onchange="renderCorpusList()" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:5px 8px;font-size:11.5px;font-family:inherit;">
+          <option value="">All personas</option>
+        </select>
+        <select id="corpus-filter-domain" onchange="renderCorpusList()" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:5px 8px;font-size:11.5px;font-family:inherit;">
+          <option value="">All domains</option>
+          <option value="health">Health</option>
+          <option value="family">Family</option>
+          <option value="economic">Economic</option>
+          <option value="institutional">Institutional</option>
+          <option value="religious">Religious</option>
+          <option value="education">Education</option>
+          <option value="language_profile">Language Profile</option>
+          <option value="general">General</option>
+        </select>
+        <select id="corpus-filter-source" onchange="renderCorpusList()" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:5px 8px;font-size:11.5px;font-family:inherit;">
+          <option value="">All sources</option>
+          <option value="field_interview">Field interview</option>
+          <option value="partner_correction">Partner correction</option>
+          <option value="flag_correction">Flag correction</option>
+          <option value="cultural_edit">Cultural edit</option>
+          <option value="manual">Manual</option>
+        </select>
+      </div>
+    </div>
+    <div id="corpus-list" style="flex:1;overflow-y:auto;padding:6px;"></div>
+    <div style="padding:10px 12px;border-top:1px solid #0F2040;flex-shrink:0;">
+      <button class="btn" onclick="exportCorpusMarkdown()" style="width:100%;font-size:11px;">⬇ Export all as .md</button>
+    </div>
+  </div>
+  <div class="v-detail" id="corpus-detail">
+    <div style="color:#2A3A50;font-size:12px;padding-top:40px;text-align:center;">Select an entry or add a new one</div>
+  </div>
+</div>
+
+<!-- Corpus entry form modal -->
+<div id="corpus-modal" onclick="closeCorpusModalBg(event)" class="modal-overlay">
+  <div class="modal-box" style="max-width:560px;max-height:90vh;">
+    <div style="padding:13px 16px;border-bottom:1px solid #0F2040;display:flex;align-items:center;">
+      <div id="corpus-modal-title" class="modal-hdr-title">Add Corpus Entry</div>
+      <div style="flex:1"></div>
+      <button onclick="closeCorpusModal()" class="modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="cf-id">
+      <div>
+        <div class="lbl" style="margin-bottom:4px;">Title</div>
+        <input id="cf-title" type="text" placeholder="Short description of this entry…" class="modal-input">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div>
+          <div class="lbl" style="margin-bottom:4px;">Persona</div>
+          <select id="cf-persona" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:7px 9px;font-size:12px;font-family:inherit;">
+            <option value="">General (all personas)</option>
+          </select>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:4px;">Domain</div>
+          <select id="cf-domain" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:7px 9px;font-size:12px;font-family:inherit;">
+            <option value="general">General</option>
+            <option value="health">Health</option>
+            <option value="family">Family</option>
+            <option value="economic">Economic</option>
+            <option value="institutional">Institutional</option>
+            <option value="religious">Religious</option>
+            <option value="education">Education</option>
+            <option value="language_profile">Language Profile</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div>
+          <div class="lbl" style="margin-bottom:4px;">Source</div>
+          <select id="cf-source" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:7px 9px;font-size:12px;font-family:inherit;">
+            <option value="manual">Manual</option>
+            <option value="field_interview">Field interview</option>
+            <option value="partner_correction">Partner correction</option>
+            <option value="flag_correction">Flag correction</option>
+            <option value="cultural_edit">Cultural edit</option>
+          </select>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:4px;">Interview / Reference</div>
+          <input id="cf-ref" type="text" placeholder="e.g. interview-003" class="modal-input">
+        </div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:4px;">Content</div>
+        <textarea id="cf-content" rows="8" placeholder="The cultural knowledge, insight, or correction…" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#CBD5E1;padding:7px 10px;font-size:12px;font-family:inherit;resize:vertical;min-height:140px;line-height:1.6;"></textarea>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:4px;">Private notes</div>
+        <textarea id="cf-notes" rows="2" placeholder="Context, caveats, follow-up questions…" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#64748B;padding:7px 10px;font-size:12px;font-family:inherit;resize:vertical;min-height:56px;line-height:1.6;"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeCorpusModal()" class="modal-cancel">Cancel</button>
+      <button id="cf-save-btn" onclick="saveCorpusEntry()" class="modal-submit">Save Entry</button>
+    </div>
+  </div>
+</div>
+
+<!-- IMPORT MARKDOWN MODAL -->
+<div id="import-modal" onclick="closeImportModalBg(event)" class="modal-overlay">
+  <div class="modal-box" style="max-width:540px;max-height:90vh;">
+    <div class="modal-hdr">
+      <div class="modal-hdr-title">⬆ Import Persona from Markdown</div>
+      <div style="flex:1"></div>
+      <button onclick="closeImportModal()" class="modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <div class="lbl" style="margin-bottom:4px;">Apply to persona</div>
+        <select id="import-persona-select" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:7px 9px;font-size:12px;font-family:inherit;"></select>
+        <div id="import-detected-name" style="font-size:10.5px;color:#3A5A70;margin-top:4px;"></div>
+      </div>
+      <div id="import-preview" style="display:flex;flex-direction:column;gap:6px;"></div>
+      <div id="import-unmatched" style="display:none;background:#0A1628;border:1px solid #1E3A5F;border-radius:7px;padding:10px 12px;">
+        <div class="lbl" style="margin-bottom:6px;color:#F59E0B;">⚠ Sections not mapped to any domain</div>
+        <div id="import-unmatched-list" style="font-size:11.5px;color:#64748B;line-height:1.8;"></div>
+        <div style="font-size:10.5px;color:#3A5A70;margin-top:4px;">These sections were skipped. Edit SECTION_MAP in set-prompt.js if you need them.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeImportModal()" class="modal-cancel">Cancel</button>
+      <button id="import-confirm-btn" onclick="confirmImport()" class="modal-submit">Apply to Persona</button>
+    </div>
+  </div>
+</div>
+
+<!-- CULTURAL NOTE MODAL (Partner) -->
+<div id="cultural-note-modal" onclick="closeCulturalNoteModalBg(event)" class="modal-overlay">
+  <div class="modal-box" style="max-width:480px;max-height:90vh;">
+    <div class="modal-hdr">
+      <div class="modal-hdr-title">💡 Ajoute nòt kiltirèl</div>
+      <div style="flex:1"></div>
+      <button onclick="closeCulturalNoteModal()" class="modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:11.5px;color:#64748B;line-height:1.6;">Ou wè yon bagay ki pa kòrèk, oswa ou vle ajoute yon enfòmasyon kiltirèl. Ekri li isit la pou ekip la revize.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div>
+          <div class="lbl" style="margin-bottom:4px;">Pou ki persona?</div>
+          <select id="cn-persona" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:7px 9px;font-size:12px;font-family:inherit;">
+            <option value="">Jeneral (tout persona)</option>
+          </select>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:4px;">Ki domèn?</div>
+          <select id="cn-domain" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:7px 9px;font-size:12px;font-family:inherit;">
+            <option value="general">Jeneral</option>
+            <option value="health">Sante</option>
+            <option value="family">Fanmi</option>
+            <option value="economic">Ekonomik</option>
+            <option value="institutional">Enstitisyonèl</option>
+            <option value="religious">Relijyon</option>
+            <option value="education">Edikasyon</option>
+            <option value="language_profile">Lang</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:4px;">Nòt ou a</div>
+        <textarea id="cn-content" rows="5" placeholder="Ekri obsèvasyon kiltirèl ou a isit la…" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#CBD5E1;padding:7px 10px;font-size:12px;font-family:inherit;resize:vertical;min-height:100px;line-height:1.6;"></textarea>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:4px;">Konfyans ou</div>
+        <div style="display:flex;gap:6px;">
+          <button class="cn-conf-btn selected" data-conf="certain" onclick="setCnConf('certain')" style="flex:1;background:#0C2B3A;border:1px solid #22D3EE;border-radius:6px;color:#22D3EE;padding:6px 8px;font-size:11px;cursor:pointer;font-family:inherit;">Mwen sèten</button>
+          <button class="cn-conf-btn" data-conf="fairly_sure" onclick="setCnConf('fairly_sure')" style="flex:1;background:#0A1628;border:1px solid #1E3A5F;border-radius:6px;color:#64748B;padding:6px 8px;font-size:11px;cursor:pointer;font-family:inherit;">Mwen panse</button>
+          <button class="cn-conf-btn" data-conf="needs_checking" onclick="setCnConf('needs_checking')" style="flex:1;background:#0A1628;border:1px solid #1E3A5F;border-radius:6px;color:#64748B;padding:6px 8px;font-size:11px;cursor:pointer;font-family:inherit;">Bezwen verifye</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeCulturalNoteModal()" class="modal-cancel">Anile</button>
+      <button id="cn-submit-btn" onclick="submitCulturalNote()" class="modal-submit">Soumèt nòt</button>
+    </div>
+  </div>
+</div>
+
+<!-- PROMPT PREVIEW MODAL -->
+<div id="prompt-modal" onclick="closePromptModal(event)" style="position:fixed;inset:0;background:rgba(2,5,10,.88);z-index:300;display:none;align-items:center;justify-content:center;padding:20px;">
+  <div id="prompt-box" style="background:#070D18;border:1px solid #1E3A5F;border-radius:12px;width:100%;max-width:680px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">
+    <div style="padding:14px 16px;border-bottom:1px solid #0F2040;display:flex;align-items:center;gap:10px;flex-shrink:0;">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#E2E8F0" id="prompt-title">System Prompt Preview</div>
+        <div style="font-size:10px;color:#3A5A70;margin-top:1px" id="prompt-subtitle">—</div>
+      </div>
+      <div style="margin-left:auto;font-size:10px;color:#3A5A70;" id="prompt-meta">—</div>
+      <button class="btn" onclick="closePromptModal()">✕</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:16px;">
+      <pre id="prompt-text" style="font-family:'Courier New',monospace;font-size:11.5px;color:#94A3B8;line-height:1.75;white-space:pre-wrap;">Loading…</pre>
+    </div>
+    <div id="prompt-warnings" style="padding:0 16px;"></div>
+    <div style="padding:12px 16px;border-top:1px solid #0F2040;display:flex;gap:8px;flex-shrink:0;">
+      <button class="btn btn-success" onclick="exportPersonaJSON()">⬇ Export JSON for repo</button>
+      <div style="flex:1"></div>
+      <div style="font-size:10px;color:#3A5A70;align-self:center">Exact text sent to Claude for this persona</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     VOICE EDITOR — vePopulate / veCollect / veRenderExamples
+     (PATCH A — applied directly)
+     ═══════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════
+     FLAG → VOICE EXAMPLE PROMOTION
+     (PATCH B — applied directly)
+     ═══════════════════════════════════════════════ -->
+<script src="admin.js"></script>
+</body>
+</html>
