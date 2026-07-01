@@ -803,11 +803,19 @@ async function tryAuth() {
   var token = document.getElementById('auth-input').value.trim();
   if (!token) return;
   var btn = document.getElementById('auth-btn');
+  var errEl = document.getElementById('auth-error');
   btn.textContent = '…'; btn.disabled = true;
   try {
     var res = await fetch('/api/auth?token=' + encodeURIComponent(token));
     if (res.status === 401) {
-      document.getElementById('auth-error').style.display = 'block';
+      errEl.textContent = 'Kòd pa bon. / Invalid token.';
+      errEl.style.display = 'block';
+      btn.textContent = 'Antre / Sign In'; btn.disabled = false;
+      return;
+    }
+    if (!res.ok) {
+      errEl.textContent = 'Server error ' + res.status + ' — check Railway logs.';
+      errEl.style.display = 'block';
       btn.textContent = 'Antre / Sign In'; btn.disabled = false;
       return;
     }
@@ -815,10 +823,17 @@ async function tryAuth() {
     currentToken = token;
     currentRole  = data.role;
     document.getElementById('auth').style.display = 'none';
-    document.getElementById('auth-error').style.display = 'none';
-    initByRole();
+    errEl.style.display = 'none';
+    try {
+      initByRole();
+    } catch(ie) {
+      console.error('initByRole error:', ie);
+      document.getElementById('auth').style.display = 'none'; // stay logged in
+      showToast('UI error after login — check console: ' + ie.message);
+    }
   } catch(e) {
-    document.getElementById('auth-error').style.display = 'block';
+    errEl.textContent = 'Network error — is Railway running? ' + e.message;
+    errEl.style.display = 'block';
   }
   btn.textContent = 'Antre / Sign In'; btn.disabled = false;
 }
