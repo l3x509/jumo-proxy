@@ -48,6 +48,20 @@ if (SUPABASE_URL && SUPABASE_KEY) {
   supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
+/* ── Shared context cache (60s TTL) ── */
+let _ctxCache = { at: 0, rows: [] };
+async function loadSharedContext() {
+  if (!supabase) return [];
+  if (Date.now() - _ctxCache.at < 60000) return _ctxCache.rows;
+  const { data, error } = await supabase
+    .from('jumo_shared_context')
+    .select('domain,content,priority,active')
+    .eq('active', true);
+  if (error) { console.error('shared context load:', error.message); return _ctxCache.rows; }
+  _ctxCache = { at: Date.now(), rows: data || [] };
+  return _ctxCache.rows;
+}
+
 /* ── Rate limiting ── */
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -131,6 +145,11 @@ async function getPersona(id) {
   }
 
   return filePersonas[id] || null;
+}
+
+async function refreshPersona(id) {
+  delete personaCache[id];
+  return getPersona(id);
 }
 
 async function syncPersonasOnStartup() {
@@ -222,6 +241,7 @@ app.post('/api/messages', limiter, async (req, res) => {
 
 async function handleMessage(req, res) {
   const { messages, system, persona_id } = req.body;
+  const isBroadcast = req.headers['x-broadcast'] === '1';
 
   if (!Array.isArray(messages) || !messages.length)
     return res.status(400).json({ error: { message: 'messages must be a non-empty array.' } });
@@ -233,7 +253,9 @@ async function handleMessage(req, res) {
     if (!persona) {
       return res.status(404).json({ error: { message: `Unknown persona: ${persona_id}` } });
     }
-    resolvedSystem = buildSystemPrompt(persona);
+    /* ── Pass shared context into prompt assembly ── */
+    const ctx = await loadSharedContext();
+    resolvedSystem = buildSystemPrompt(persona, ctx);
   } else if (system) {
     resolvedSystem = system;
   }
@@ -241,8 +263,9 @@ async function handleMessage(req, res) {
   const LANG = `\n\nLANGUAGE RULE — ALWAYS FOLLOW: Detect the language of the user's most recent message and respond entirely in that language. English → English only. Kreyòl → Kreyòl only. French → French only. This overrides all other language instructions.`;
 
   const payload = {
-    model:      'claude-sonnet-4-6',
-    max_tokens: req.headers['x-broadcast'] === '1' ? 600 : 1500,
+    model:       'claude-sonnet-4-6',
+    max_tokens:  isBroadcast ? 600 : 350,
+    temperature: 0.72,
     messages,
     ...(resolvedSystem ? { system: resolvedSystem + LANG } : {}),
   };
@@ -324,8 +347,6 @@ app.get('/api/sessions', async (req, res) => {
    PERSONAS — admin only
    ═══════════════════════════════════════════════════════════ */
 app.get('/api/personas', async (req, res) => {
-  
-
   const statusFilter = req.query.status;
   const search       = req.query.q;
 
@@ -369,7 +390,6 @@ app.get('/api/personas', async (req, res) => {
         updated_at: p.updated_at,
         age_range:  (p.basic && p.basic.age_range) || '',
         region:     (p.basic && p.basic.region)    || '',
-        // ── Display Info fields ──
         init:      p.init      || (p.name ? p.name.trim().split(/\s+/).slice(0,2).map(w => w[0]).join('').toUpperCase() : ''),
         archetype: p.archetype || '',
         age:       p.age       || '',
@@ -390,8 +410,6 @@ app.get('/api/personas', async (req, res) => {
 });
 
 app.get('/api/personas/:id', async (req, res) => {
-  
-
   if (req.params.id === 'prompt') return res.status(400).json({ error: 'Use /api/personas/:id/prompt' });
 
   const persona = await getPersona(req.params.id);
@@ -401,12 +419,14 @@ app.get('/api/personas/:id', async (req, res) => {
 });
 
 app.get('/api/personas/:id/prompt', async (req, res) => {
-  
+  if (!requireAdmin(req, res)) return;
 
   const persona = await getPersona(req.params.id);
   if (!persona) return res.status(404).json({ error: 'Persona not found.' });
 
-  const prompt     = buildSystemPrompt(persona);
+  /* ── Pass shared context so preview matches what the model sees ── */
+  const ctx        = await loadSharedContext();
+  const prompt     = buildSystemPrompt(persona, ctx);
   const validation = validatePersona(persona);
 
   res.json({
@@ -440,7 +460,6 @@ app.put('/api/personas/:id', async (req, res) => {
     domains:       p.domains || {},
     system_prompt: p.system_prompt || p.system_prompt_fragment || '',
     version:       p.version || 1,
-    // ── Display Info fields ──
     init:      p.init      || '',
     archetype: p.archetype || '',
     age:       String(p.age || ''),
@@ -448,6 +467,11 @@ app.put('/api/personas/:id', async (req, res) => {
     bio:       p.bio       || '',
     tags:      Array.isArray(p.tags)      ? p.tags      : [],
     questions: Array.isArray(p.questions) ? p.questions : [],
+    /* ── Voice & behavior fields ── */
+    voice_anchor:     p.voice_anchor     ?? null,
+    voice_examples:   Array.isArray(p.voice_examples)   ? p.voice_examples   : (p.voice_examples   ?? []),
+    refusal_patterns: Array.isArray(p.refusal_patterns) ? p.refusal_patterns : (p.refusal_patterns ?? []),
+    contradictions:   Array.isArray(p.contradictions)   ? p.contradictions   : (p.contradictions   ?? []),
     updated_at: now,
   }, { onConflict: 'id' });
 
@@ -734,6 +758,129 @@ app.put('/api/flags/:id', async (req, res) => {
     .eq('id', req.params.id);
 
   if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+/* ── Flag → voice-example promotion (admin only) ──
+   Promotes a corrected flag response directly into the persona's
+   voice_examples array. The correction is live immediately —
+   no redeploy needed. Provenance fields (source, reviewer, from_flag)
+   are stored in DB but builder.js only reads q/a so they never
+   pollute the prompt. */
+app.post('/api/flags/:id/promote', async (req, res) => {
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
+
+  const { data: flag, error: fe } = await supabase
+    .from('jumo_flags').select('*').eq('id', req.params.id).single();
+  if (fe || !flag) return res.status(404).json({ error: 'Flag not found.' });
+
+  const q = (req.body.q ?? flag.question_text ?? '').trim();
+  const a = (req.body.a ?? flag.correction    ?? '').trim();
+  if (!q || !a)
+    return res.status(400).json({ error: 'Both q (question) and a (correction) are required.' });
+
+  const persona = await getPersona(flag.persona_id);
+  if (!persona) return res.status(404).json({ error: 'Persona not found.' });
+
+  const examples = Array.isArray(persona.voice_examples)
+    ? persona.voice_examples.slice() : [];
+
+  examples.push({
+    q, a,
+    source:    'flag_correction',
+    reviewer:  req.body.reviewer || null,
+    from_flag: flag.id,
+    added_at:  new Date().toISOString(),
+  });
+
+  const { error: ue } = await supabase
+    .from('jumo_personas')
+    .update({ voice_examples: examples, updated_at: new Date().toISOString() })
+    .eq('id', persona.id);
+  if (ue) return res.status(500).json({ error: ue.message });
+
+  await refreshPersona(persona.id);
+
+  await supabase.from('jumo_flags')
+    .update({ status: 'resolved', resolution: 'promoted_to_voice_example', updated_at: new Date().toISOString() })
+    .eq('id', flag.id);
+
+  res.json({ success: true, persona_id: persona.id, example_count: examples.length });
+});
+
+/* ═══════════════════════════════════════════════════════════
+   SHARED CONTEXT
+   ═══════════════════════════════════════════════════════════ */
+app.get('/api/shared-context', async (req, res) => {
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
+
+  let q = supabase.from('jumo_shared_context').select('*').order('priority', { ascending: false });
+  if (req.query.domain) q = q.eq('domain', req.query.domain);
+  if (req.query.active) q = q.eq('active', req.query.active === 'true');
+
+  const { data, error } = await q;
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+app.post('/api/shared-context', async (req, res) => {
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
+
+  const e = req.body;
+  if (!e.content || !e.content.trim())
+    return res.status(400).json({ error: 'content is required.' });
+
+  const now = new Date().toISOString();
+  const { error } = await supabase.from('jumo_shared_context').insert({
+    id:       e.id       || `ctx-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+    domain:   e.domain   || 'general',
+    title:    e.title    || null,
+    content:  e.content.trim(),
+    source:   e.source   || 'direct_knowledge',
+    priority: e.priority ?? 0,
+    active:   e.active   ?? true,
+    notes:    e.notes    || null,
+    created_at: now,
+    updated_at: now,
+  });
+
+  if (error) return res.status(500).json({ error: error.message });
+  _ctxCache.at = 0; // bust cache so next message picks up new entry
+  res.json({ success: true });
+});
+
+app.put('/api/shared-context/:id', async (req, res) => {
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
+
+  const e = req.body;
+  const { error } = await supabase.from('jumo_shared_context').update({
+    domain:   e.domain   || 'general',
+    title:    e.title    || null,
+    content:  e.content  || '',
+    source:   e.source   || 'direct_knowledge',
+    priority: e.priority ?? 0,
+    active:   e.active   ?? true,
+    notes:    e.notes    || null,
+    updated_at: new Date().toISOString(),
+  }).eq('id', req.params.id);
+
+  if (error) return res.status(500).json({ error: error.message });
+  _ctxCache.at = 0; // bust cache
+  res.json({ success: true });
+});
+
+app.delete('/api/shared-context/:id', async (req, res) => {
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
+
+  const { error } = await supabase
+    .from('jumo_shared_context').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  _ctxCache.at = 0; // bust cache
   res.json({ success: true });
 });
 
