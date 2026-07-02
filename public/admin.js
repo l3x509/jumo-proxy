@@ -935,14 +935,23 @@ function selectFlag(id) {
   }
 
   html += '<div style="background:#070D18;border:1px solid #0F2040;border-radius:8px;padding:14px;margin-bottom:12px;">'+
-    '<div class="lbl" style="margin-bottom:10px;">Resolution — where does this fix go?</div>'+
-    '<div style="display:flex;flex-direction:column;gap:8px;">';
+    '<div class="lbl" style="margin-bottom:10px;">Resolution — where does this fix go?</div>';
+
+  // ── Correction input — the correct text this flag should produce ──
+  if (f.status !== 'resolved') {
+    html += '<div style="margin-bottom:12px;">'+
+      '<div style="font-size:9.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#34D399;margin-bottom:5px;">Correct response — what Jumo should have said</div>'+
+      '<textarea id="flag-correction-'+esc(f.id)+'" oninput="flagCorrectionDirty=true" placeholder="Type the culturally correct answer here. This feeds Promote and Download below." style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:6px;color:#CBD5E1;padding:9px 11px;font-size:12px;font-family:inherit;resize:vertical;min-height:80px;line-height:1.6;">'+esc(f.partner_correction||'')+'</textarea>'+
+      '<div style="font-size:10px;color:#3A5A70;margin-top:4px;">Saved automatically when you Promote, Send to partner, or Mark resolved.</div>'+
+    '</div>';
+  }
+
+  html += '<div style="display:flex;flex-direction:column;gap:8px;">';
 
   if (f.domain_hint && f.status !== 'resolved') {
-    var correctionText = f.partner_correction || '';
-    html += '<button class="btn btn-success" onclick="applyFlagToPersona(\''+esc(f.id)+'\',\''+esc(f.persona_id)+'\',\''+esc(f.domain_hint)+'\','+JSON.stringify(correctionText)+')" style="text-align:left;padding:10px 12px;">'+
-      '✎ Open '+esc(domainLabel)+' domain for '+esc(f.persona_name||f.persona_id)+(correctionText ? ' + load correction' : '')+'<br>'+
-      '<span style="font-size:10px;font-weight:400;opacity:.7;">'+(correctionText ? 'Partner correction will be pre-loaded into the domain textarea' : 'Navigate to persona editor with this domain expanded')+'</span>'+
+    html += '<button class="btn btn-success" onclick="applyFlagToPersona(\''+esc(f.id)+'\',\''+esc(f.persona_id)+'\',\''+esc(f.domain_hint)+'\',getFlagCorrection(\''+esc(f.id)+'\'))" style="text-align:left;padding:10px 12px;">'+
+      '✎ Open '+esc(domainLabel)+' domain for '+esc(f.persona_name||f.persona_id)+' + load correction<br>'+
+      '<span style="font-size:10px;font-weight:400;opacity:.7;">Loads the correction above into the domain textarea</span>'+
     '</button>';
   }
 
@@ -1039,7 +1048,7 @@ function downloadCorpusSnippet(flagId) {
   var f = flagsData.find(function(x){ return x.id===flagId; });
   if (!f) return;
   var dt = new Date().toISOString().slice(0,10);
-  var correction = f.partner_correction || f.admin_notes || '[correction pending]';
+  var correction = getFlagCorrection(flagId) || f.partner_correction || f.admin_notes || '[correction pending]';
   var domain = f.domain_hint || 'general';
   var snippet = [
     '---',
@@ -1071,13 +1080,14 @@ function downloadCorpusSnippet(flagId) {
 }
 
 async function resolveFlag(flagId) {
+  var correction = getFlagCorrection(flagId);
   try {
     await adminFetch('/api/flags/'+encodeURIComponent(flagId), {
       method:'PUT',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({status:'resolved'})
+      body:JSON.stringify(correction ? {status:'resolved', partner_correction:correction} : {status:'resolved'})
     });
-    flagsData = flagsData.map(function(f){ return f.id===flagId ? Object.assign({},f,{status:'resolved'}) : f; });
+    flagsData = flagsData.map(function(f){ return f.id===flagId ? Object.assign({},f,{status:'resolved'},correction?{partner_correction:correction}:{}) : f; });
     renderFlagsList();
     selectFlag(flagId);
     updateFlagsBadge();
@@ -1909,20 +1919,33 @@ function renderHealthDashboard() {
 
 /* ═══ FLAG_PROMOTE ═══ */
 
+/* Read the inline correction textarea for a flag, if present */
+function getFlagCorrection(flagId) {
+  var el = document.getElementById('flag-correction-'+flagId);
+  return el ? el.value.trim() : '';
+}
+var flagCorrectionDirty = false;
+
 async function jumoPromoteFlag(flagId) {
   var f = (typeof flagsData !== 'undefined') ? flagsData.find(function(x){ return x.id===flagId; }) : null;
 
   var q = f ? (f.question_text || '') : '';
-  var a = f ? (f.partner_correction || '') : '';
+  var a = getFlagCorrection(flagId) || (f ? (f.partner_correction || '') : '');
 
   if (!q) { q = prompt('Question that prompted this response:', ''); if (q === null) return; }
-  if (!a) { a = prompt('Corrected response (becomes the voice example):', ''); if (a === null) return; }
+  if (!a) { showToast('Type the correct response in the field above first'); 
+    var ta = document.getElementById('flag-correction-'+flagId); if (ta) ta.focus(); return; }
   if (!q.trim() || !a.trim()) { showToast('Need both a question and a corrected answer'); return; }
 
   var btn = document.getElementById('promote-btn-'+flagId);
   if (btn) { btn.textContent = 'Promoting…'; btn.disabled = true; }
 
   try {
+    // Persist the correction onto the flag first so it isn't lost
+    await adminFetch('/api/flags/'+encodeURIComponent(flagId), {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ partner_correction: a.trim() })
+    });
     var res = await adminFetch('/api/flags/'+flagId+'/promote', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1931,6 +1954,7 @@ async function jumoPromoteFlag(flagId) {
     var d = await res.json();
     if (d.success) {
       showToast('✓ Voice example added. Persona now has '+d.example_count+' examples. Live immediately.');
+      flagCorrectionDirty = false;
       loadFlags();
     } else {
       showToast('Error: '+(d.error||'unknown'));
