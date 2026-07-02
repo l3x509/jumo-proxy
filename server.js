@@ -923,6 +923,8 @@ app.post('/api/corpus', async (req, res) => {
     reference:    entry.reference    || null,
     title:        entry.title        || null,
     content:      entry.content.trim(),
+    confidence:   entry.confidence   || 'general',
+    has_gaps:     !!entry.has_gaps,
     notes:        entry.notes        || null,
     status:       'active',
     created_at:   entry.created_at   || now,
@@ -938,22 +940,187 @@ app.put('/api/corpus/:id', async (req, res) => {
   if (!requireStorage(req, res)) return;
 
   const update = req.body;
+  const patch = {
+    title:        update.title        || null,
+    persona_id:   update.persona_id   || null,
+    persona_name: update.persona_name || null,
+    domain:       update.domain       || 'general',
+    source:       update.source       || 'manual',
+    reference:    update.reference    || null,
+    content:      update.content      || '',
+    notes:        update.notes        || null,
+    status:       update.status       || 'active',
+    updated_at:   new Date().toISOString(),
+  };
+  if (update.confidence !== undefined) patch.confidence = update.confidence;
+  if (update.has_gaps   !== undefined) patch.has_gaps   = update.has_gaps;
+
   const { error } = await supabase
     .from('jumo_corpus')
-    .update({
-      title:        update.title        || null,
-      persona_id:   update.persona_id   || null,
-      persona_name: update.persona_name || null,
-      domain:       update.domain       || 'general',
-      source:       update.source       || 'manual',
-      reference:    update.reference    || null,
-      content:      update.content      || '',
-      notes:        update.notes        || null,
-      status:       update.status       || 'active',
-      updated_at:   new Date().toISOString(),
-    })
+    .update(patch)
     .eq('id', req.params.id);
 
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+/* ═══════════════════════════════════════════════════════════
+   PERSONA TEST — admin-only, mirrors /api/messages but authed
+   with the admin token so the panel can test without the
+   separate access token.
+   ═══════════════════════════════════════════════════════════ */
+app.post('/api/personas/:id/test', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  if (!ANTHROPIC_KEY) return res.status(500).json({ error: { message: 'Server not configured.' } });
+
+  const persona = await getPersona(req.params.id);
+  if (!persona) return res.status(404).json({ error: { message: 'Persona not found.' } });
+
+  const { messages } = req.body;
+  if (!Array.isArray(messages) || !messages.length)
+    return res.status(400).json({ error: { message: 'messages required.' } });
+
+  const ctx = await loadSharedContext();
+  const LANG = `\n\nLANGUAGE RULE — ALWAYS FOLLOW: Detect the language of the user's most recent message and respond entirely in that language. English → English only. Kreyòl → Kreyòl only. French → French only.`;
+  const system = buildSystemPrompt(persona, ctx) + LANG;
+
+  try {
+    const up = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 350, temperature: 0.72, system, messages }),
+    });
+    const data = await up.json();
+    res.status(up.status).json(data);
+  } catch (err) {
+    res.status(502).json({ error: { message: 'Upstream error.' } });
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════
+   CORPUS — BULK IMPORT
+   Upserts on `reference` so re-running an import updates rather
+   than duplicates. Accepts an array of parsed entries + gaps.
+   ═══════════════════════════════════════════════════════════ */
+app.post('/api/corpus/bulk', async (req, res) => {
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
+
+  const { entries, gaps, batch } = req.body;
+  const batchId = batch || `import-${Date.now()}`;
+  const now = new Date().toISOString();
+
+  const report = { entries_new: 0, entries_updated: 0, gaps_added: 0, failed: 0, errors: [] };
+
+  // ── Corpus entries: upsert on reference when present, else insert ──
+  if (Array.isArray(entries) && entries.length) {
+    for (const e of entries) {
+      if (!e.content || !e.content.trim()) { report.failed++; continue; }
+
+      const row = {
+        persona_id:   e.persona_id   || null,
+        persona_name: e.persona_name || null,
+        domain:       e.domain       || 'general',
+        source:       e.source       || 'corpus_import',
+        reference:    e.reference    || null,
+        title:        e.title        || null,
+        content:      e.content.trim(),
+        confidence:   e.confidence   || 'general',
+        has_gaps:     !!e.has_gaps,
+        notes:        e.notes        || null,
+        status:       'active',
+        import_batch: batchId,
+        updated_at:   now,
+      };
+
+      try {
+        // If a reference is given, check for an existing row to update
+        if (row.reference) {
+          const { data: existing } = await supabase
+            .from('jumo_corpus').select('id').eq('reference', row.reference).maybeSingle();
+          if (existing && existing.id) {
+            const { error } = await supabase.from('jumo_corpus').update(row).eq('id', existing.id);
+            if (error) { report.failed++; report.errors.push(error.message); }
+            else report.entries_updated++;
+            continue;
+          }
+        }
+        row.id = e.id || `corpus-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+        row.created_at = now;
+        const { error } = await supabase.from('jumo_corpus').insert(row);
+        if (error) { report.failed++; report.errors.push(error.message); }
+        else report.entries_new++;
+      } catch (err) {
+        report.failed++; report.errors.push(err.message);
+      }
+    }
+  }
+
+  // ── Gaps: insert as worklist rows ──
+  if (Array.isArray(gaps) && gaps.length) {
+    const gapRows = gaps
+      .filter(g => g.question && g.question.trim())
+      .map(g => ({
+        id:           `gap-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+        reference:    g.reference    || null,
+        persona_id:   g.persona_id   || null,
+        persona_name: g.persona_name || null,
+        domain:       g.domain       || 'general',
+        question:     g.question.trim(),
+        status:       'open',
+        source:       'corpus_import',
+        import_batch: batchId,
+        created_at:   now,
+        updated_at:   now,
+      }));
+    if (gapRows.length) {
+      const { error } = await supabase.from('jumo_gaps').insert(gapRows);
+      if (error) report.errors.push('gaps: ' + error.message);
+      else report.gaps_added = gapRows.length;
+    }
+  }
+
+  res.json({ success: true, batch: batchId, ...report });
+});
+
+/* ═══════════════════════════════════════════════════════════
+   GAPS — validation worklist
+   ═══════════════════════════════════════════════════════════ */
+app.get('/api/gaps', async (req, res) => {
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
+
+  let q = supabase.from('jumo_gaps').select('*').order('created_at', { ascending: false });
+  if (req.query.status)     q = q.eq('status', req.query.status);
+  if (req.query.persona_id) q = q.eq('persona_id', req.query.persona_id);
+  if (req.query.domain)     q = q.eq('domain', req.query.domain);
+
+  const { data, error } = await q.limit(1000);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+app.put('/api/gaps/:id', async (req, res) => {
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
+
+  const u = req.body;
+  const { error } = await supabase.from('jumo_gaps').update({
+    status:     u.status     || 'open',
+    resolution: u.resolution || null,
+    domain:     u.domain     || 'general',
+    persona_id: u.persona_id || null,
+    updated_at: new Date().toISOString(),
+  }).eq('id', req.params.id);
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+app.delete('/api/gaps/:id', async (req, res) => {
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
+  const { error } = await supabase.from('jumo_gaps').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
 });
