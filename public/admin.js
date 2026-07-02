@@ -422,7 +422,16 @@ function populateEditor(p) {
   });
   document.getElementById('f-system_prompt').value = p.system_prompt || p.system_prompt_fragment || '';
   var upd=p.updated_at?new Date(p.updated_at).toLocaleString():'Never';
-  document.getElementById('pe-version').textContent='Version '+(p.version||1)+' · Last saved '+upd;
+  var exN = Array.isArray(p.voice_examples) ? p.voice_examples.length : 0;
+  var hasAnchor = !!(p.voice_anchor && p.voice_anchor.trim());
+  var openFlags = (typeof flagsData!=='undefined') ? flagsData.filter(function(fl){return fl.persona_id===p.id && fl.status!=='resolved';}).length : 0;
+  var readiness = [];
+  readiness.push(exN+' voice example'+(exN===1?'':'s'));
+  readiness.push(hasAnchor?'anchor set':'no anchor');
+  if (openFlags) readiness.push('⚑ '+openFlags+' open flag'+(openFlags===1?'':'s'));
+  document.getElementById('pe-version').innerHTML =
+    'Version '+(p.version||1)+' · Last saved '+esc(upd)+
+    ' <span style="color:'+(exN>=3?'#34D399':exN>0?'#F59E0B':'#EF4444')+';">· '+readiness.join(' · ')+'</span>';
   document.getElementById('persona-detail-empty').style.display='none';
   document.getElementById('persona-editor').style.display='block';
   /* ── PATCH: Voice & behavior fields ── */
@@ -893,6 +902,14 @@ function selectFlag(id) {
   var f = flagsData.find(function(x){ return x.id===id; });
   if (!f) return;
 
+  // Ensure persona is loaded so we can show its voice-example count + re-render
+  if (f.persona_id && !personaData[f.persona_id]) {
+    adminFetch('/api/personas/'+encodeURIComponent(f.persona_id))
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(p){ if (p) { personaData[f.persona_id] = p; if (selectedFlagId===id) selectFlag(id); } })
+      .catch(function(){});
+  }
+
   var detail = document.getElementById('flag-detail');
   var statusColor  = FLAG_STATUS_COLORS[f.status] || '#3A5A70';
   var typeLabel    = FLAG_TYPE_LABELS[f.flag_type] || f.flag_type;
@@ -939,11 +956,30 @@ function selectFlag(id) {
 
   // ── Correction input — the correct text this flag should produce ──
   if (f.status !== 'resolved') {
-    html += '<div style="margin-bottom:12px;">'+
+    html += '<div style="margin-bottom:14px;">'+
       '<div style="font-size:9.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#34D399;margin-bottom:5px;">Correct response — what Jumo should have said</div>'+
-      '<textarea id="flag-correction-'+esc(f.id)+'" oninput="flagCorrectionDirty=true" placeholder="Type the culturally correct answer here. This feeds Promote and Download below." style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:6px;color:#CBD5E1;padding:9px 11px;font-size:12px;font-family:inherit;resize:vertical;min-height:80px;line-height:1.6;">'+esc(f.partner_correction||'')+'</textarea>'+
+      '<textarea id="flag-correction-'+esc(f.id)+'" oninput="flagCorrectionDirty=true" placeholder="Type the culturally correct answer here. This feeds every action below." style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:6px;color:#CBD5E1;padding:9px 11px;font-size:12px;font-family:inherit;resize:vertical;min-height:80px;line-height:1.6;">'+esc(f.partner_correction||'')+'</textarea>'+
       '<div style="font-size:10px;color:#3A5A70;margin-top:4px;">Saved automatically when you Promote, Send to partner, or Mark resolved.</div>'+
     '</div>';
+  }
+
+  // ── Guidance: which path to choose ──
+  if (f.status !== 'resolved') {
+    var exCount = 0;
+    var pd = personaData[f.persona_id];
+    if (pd && Array.isArray(pd.voice_examples)) exCount = pd.voice_examples.length;
+    html += '<div style="background:#04131F;border:1px solid #0E2A3A;border-radius:7px;padding:10px 12px;margin-bottom:12px;font-size:11px;line-height:1.7;color:#7EA8C0;">'+
+      '<div style="color:#7EC8E3;font-weight:600;margin-bottom:4px;">Which fix should you use?</div>'+
+      '<div><span style="color:#22D3EE;">⬆ Promote</span> — quick fix. The persona learns to <em>say it better</em> next time. Best for tone, phrasing, register. Live instantly.</div>'+
+      '<div><span style="color:#34D399;">✎ Domain</span> — deeper fix. Updates the persona\'s actual <em>knowledge</em>. Best when the answer was factually or culturally wrong, not just worded badly.</div>'+
+      '<div style="color:#3A5A70;margin-top:4px;">Rule of thumb: wrong <em>voice</em> → Promote. Wrong <em>knowledge</em> → Domain. Both is fine.</div>'+
+    '</div>';
+
+    // PRIMARY action — Promote (filled)
+    html += '<button class="btn" id="promote-btn-'+esc(f.id)+'" onclick="jumoPromoteFlag(\''+esc(f.id)+'\')" style="text-align:left;padding:11px 13px;background:#0C2B3A;border-color:#22D3EE;color:#7EC8E3;margin-bottom:8px;">'+
+      '⬆ Promote correction to voice example'+(exCount?' <span style="opacity:.6;font-weight:400;">('+exCount+' now)</span>':'')+'<br>'+
+      '<span style="font-size:10px;font-weight:400;opacity:.75;">Correction becomes a live Q/A voice example for '+esc(f.persona_name||f.persona_id)+' — instant</span>'+
+    '</button>';
   }
 
   html += '<div style="display:flex;flex-direction:column;gap:8px;">';
@@ -951,34 +987,26 @@ function selectFlag(id) {
   if (f.domain_hint && f.status !== 'resolved') {
     html += '<button class="btn btn-success" onclick="applyFlagToPersona(\''+esc(f.id)+'\',\''+esc(f.persona_id)+'\',\''+esc(f.domain_hint)+'\',getFlagCorrection(\''+esc(f.id)+'\'))" style="text-align:left;padding:10px 12px;">'+
       '✎ Open '+esc(domainLabel)+' domain for '+esc(f.persona_name||f.persona_id)+' + load correction<br>'+
-      '<span style="font-size:10px;font-weight:400;opacity:.7;">Loads the correction above into the domain textarea</span>'+
-    '</button>';
-  }
-
-  html += '<button class="btn" onclick="downloadCorpusSnippet(\''+esc(f.id)+'\')" style="text-align:left;padding:10px 12px;">'+
-    '⬇ Download corpus snippet<br>'+
-    '<span style="font-size:10px;font-weight:400;opacity:.7;">Export as .md ready to append to /corpus/master-corpus.md</span>'+
-  '</button>';
-
-  if (f.status !== 'resolved') {
-    html += '<button class="btn" onclick="resolveFlag(\''+esc(f.id)+'\')" style="text-align:left;padding:10px 12px;color:#34D399;border-color:#065F46;">'+
-      '✓ Mark as resolved<br>'+
-      '<span style="font-size:10px;font-weight:400;opacity:.7;">Confirm you\'ve applied the correction somewhere</span>'+
+      '<span style="font-size:10px;font-weight:400;opacity:.7;">Loads the correction above into the domain textarea for a deeper edit</span>'+
     '</button>';
   }
 
   if (f.status === 'open') {
     html += '<button class="btn" onclick="sendFlagToPartner(\''+esc(f.id)+'\')" style="text-align:left;padding:10px 12px;">'+
-      '↗ Send to partner now<br>'+
-      '<span style="font-size:10px;font-weight:400;opacity:.7;">Add to partner validation queue</span>'+
+      '↗ Send to partner for validation<br>'+
+      '<span style="font-size:10px;font-weight:400;opacity:.7;">Not sure of the answer? Route it to your cultural partner instead</span>'+
     '</button>';
   }
 
-  /* ── PATCH: Promote button ── */
+  html += '<button class="btn" onclick="downloadCorpusSnippet(\''+esc(f.id)+'\')" style="text-align:left;padding:10px 12px;">'+
+    '⬇ Download corpus snippet<br>'+
+    '<span style="font-size:10px;font-weight:400;opacity:.7;">Export as .md to append to your local master corpus</span>'+
+  '</button>';
+
   if (f.status !== 'resolved') {
-    html += '<button class="btn" id="promote-btn-'+esc(f.id)+'" onclick="jumoPromoteFlag(\''+esc(f.id)+'\')" style="text-align:left;padding:10px 12px;color:#22D3EE;border-color:#0E4A5A;">'+
-      '⬆ Promote correction to voice example<br>'+
-      '<span style="font-size:10px;font-weight:400;opacity:.7;">One click — correction becomes a live Q/A voice example for this persona</span>'+
+    html += '<button class="btn" onclick="resolveFlag(\''+esc(f.id)+'\')" style="text-align:left;padding:10px 12px;color:#94A3B8;">'+
+      '✓ Mark as resolved<br>'+
+      '<span style="font-size:10px;font-weight:400;opacity:.7;">Close this flag once you\'ve applied the fix somewhere above</span>'+
     '</button>';
   }
 
