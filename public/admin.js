@@ -124,10 +124,12 @@ function showTab(tab) {
   document.getElementById('personas-view').classList.toggle('active', tab==='personas');
   document.getElementById('flags-view').classList.toggle('active', tab==='flags');
   document.getElementById('corpus-view').classList.toggle('active', tab==='corpus');
+  var gv = document.getElementById('gaps-view'); if (gv) gv.classList.toggle('active', tab==='gaps');
   document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.toggle('tab-active', b.dataset.tab===tab); });
   if (tab==='personas' && Object.keys(personaData).length===0) loadPersonas();
   if (tab==='flags')  loadFlags();
   if (tab==='corpus') loadCorpus();
+  if (tab==='gaps')   loadGaps();
 }
 
 /* ════════════════════════════
@@ -1533,6 +1535,7 @@ async function loadCorpus() {
   buildCorpusPersonaFilter();
   renderCorpusList();
   updateCorpusBadge();
+  renderCorpusCoverage();
 }
 
 function buildCorpusPersonaFilter() {
@@ -1562,11 +1565,19 @@ function renderCorpusList() {
   var pf = document.getElementById('corpus-filter-persona') ? document.getElementById('corpus-filter-persona').value : '';
   var df = document.getElementById('corpus-filter-domain')  ? document.getElementById('corpus-filter-domain').value  : '';
   var sf = document.getElementById('corpus-filter-source')  ? document.getElementById('corpus-filter-source').value  : '';
+  var cf = document.getElementById('corpus-filter-confidence') ? document.getElementById('corpus-filter-confidence').value : '';
+  var qEl = document.getElementById('corpus-search');
+  var q = qEl ? qEl.value.trim().toLowerCase() : '';
   var filtered = corpusData.filter(function(e) {
     if (pf && pf !== 'general' && e.persona_id !== pf) return false;
     if (pf === 'general' && e.persona_id) return false;
     if (df && e.domain !== df) return false;
     if (sf && e.source !== sf) return false;
+    if (cf && (e.confidence||'general') !== cf) return false;
+    if (q) {
+      var hay = ((e.title||'')+' '+(e.content||'')+' '+(e.reference||'')).toLowerCase();
+      if (hay.indexOf(q) === -1) return false;
+    }
     return true;
   });
   if (!filtered.length) {
@@ -1579,10 +1590,13 @@ function renderCorpusList() {
     var dt = e.created_at ? new Date(e.created_at).toLocaleDateString([], {month:'short', day:'numeric', year:'2-digit'}) : '';
     var srcLabel = (SOURCE_LABELS[e.source] || e.source || '').replace(/^[^ ]+ /, '');
     var isPending = e.status === 'pending_review';
+    var confMark = {confirmed:'✅',general:'📚',mixed:'◑',corrected:'⚠'}[e.confidence||'general']||'📚';
     html += '<div class="s-item'+(e.id===selectedCorpusId?' active':'')+'" onclick="selectCorpusEntry(\''+esc(e.id)+'\')" style="border-left:3px solid '+color+'">' +
       '<div style="font-size:11.5px;font-weight:600;color:#CBD5E1;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+
         (isPending?'<span class="pending-badge" style="margin-right:5px;">Pending</span>':'')+
+        '<span title="'+(e.confidence||'general')+'" style="margin-right:4px;">'+confMark+'</span>'+
         esc(e.title||e.content.slice(0,50))+
+        (e.has_gaps?' <span style="color:#A78BFA;font-size:9px;">🔲</span>':'')+
       '</div>'+
       '<div style="font-size:10px;color:#3A5A70;">'+esc(e.persona_name||'General')+' · '+(DOMAIN_INFO[e.domain] ? DOMAIN_INFO[e.domain].label : esc(e.domain||'General'))+'</div>'+
       '<div style="font-size:10px;color:#2A3A50;margin-top:1px;">'+esc(srcLabel)+' · '+esc(dt)+'</div>'+
@@ -1926,4 +1940,439 @@ async function jumoPromoteFlag(flagId) {
     showToast('Network error: '+e.message);
     if (btn) { btn.textContent = '⬆ Promote correction to voice example'; btn.disabled = false; }
   }
+}
+
+/* ════════════════════════════════════════════════════════════
+   CORPUS BULK IMPORT — parser + modal + preview + commit
+   ════════════════════════════════════════════════════════════ */
+
+var CORPUS_PERSONA_NAMES = [
+  { id:'marie-ange', match:['marie-ange','marie ange'] },
+  { id:'lisette',    match:['granmoun lisette','lisette'] },
+  { id:'jefte',      match:['jèftè','jefte','jèfte'] },
+  { id:'nadege',     match:['nadège','nadege'] },
+  { id:'dieunel',    match:['dieunel'] },
+  { id:'sophonie',   match:['sophonie'] },
+  { id:'kenzy',      match:['kenzy'] },
+  { id:'jonas',      match:['pastè jonas','jonas michelet','jonas'] },
+  { id:'roseline',   match:['roseline'] },
+  { id:'marilene',   match:['marilène','marilene'] },
+];
+
+var CORPUS_DOMAIN_KEYWORDS = {
+  health:           ['health','illness','sick','doktè','klinik','limye','houngan','medic','disease','care','spiritual diagnos'],
+  family:           ['family','fanmi','children','household','marriage','kinship','solidarity','mother','father','community network'],
+  economic:         ['economic','madan sara','sòl','money','lajan','market','income','business','moto','trade','financial','employment','microfinance'],
+  institutional:    ['ngo','institution','trust','government','leta','organization','aid','world bank','state','authority','program','stakeholder'],
+  religious:        ['vodou','catholic','evangelical','church','legliz','lwa','spiritual','vèvè','houngan','ginen','pastè','faith','religion'],
+  education:        ['education','school','literacy','learning','lekòl'],
+  language_profile: ['proverb','pwovèb','vocabulary','term','voice','tone','tire pwen','communication','language','saying','food','manje','music','mizik','dish'],
+};
+
+function corpusGuessDomain(title, content) {
+  var hay = (title + ' ' + content.slice(0,400)).toLowerCase();
+  var best='general', bestScore=0;
+  for (var d in CORPUS_DOMAIN_KEYWORDS) {
+    var s=0; CORPUS_DOMAIN_KEYWORDS[d].forEach(function(k){ if(hay.indexOf(k)!==-1) s++; });
+    if (s>bestScore){ bestScore=s; best=d; }
+  }
+  return bestScore>0 ? best : 'general';
+}
+function corpusPersonaFromLine(line){
+  var low=line.toLowerCase();
+  for(var i=0;i<CORPUS_PERSONA_NAMES.length;i++)
+    if(CORPUS_PERSONA_NAMES[i].match.some(function(m){return low.indexOf(m)!==-1;})) return CORPUS_PERSONA_NAMES[i].id;
+  return null;
+}
+function corpusDetectPersona(title, content){
+  var hay=(title+' '+content).toLowerCase();
+  var pm=content.match(/([A-Za-zÀ-ÿ\s'-]+?)\s*\(primary/i);
+  if(pm){ var t=pm[1].toLowerCase();
+    for(var i=0;i<CORPUS_PERSONA_NAMES.length;i++)
+      if(CORPUS_PERSONA_NAMES[i].match.some(function(m){return t.indexOf(m)!==-1;})) return {id:CORPUS_PERSONA_NAMES[i].id,multi:true};
+  }
+  if(/substrate|all personas|all female personas/i.test(hay)) return {id:'general',multi:true};
+  var found=[];
+  CORPUS_PERSONA_NAMES.forEach(function(p){ if(p.match.some(function(m){return hay.indexOf(m)!==-1;})) found.push(p.id); });
+  if(found.length===1) return {id:found[0],multi:false};
+  if(found.length>1)   return {id:found[0],multi:true};
+  return {id:'general',multi:false};
+}
+function corpusDetectConfidence(body){
+  var c=(body.match(/✅/g)||[]).length, g=(body.match(/📚/g)||[]).length,
+      w=(body.match(/⚠️/g)||[]).length;
+  if(w>0 && w>=c) return 'corrected';
+  if(c>0 && g>0)  return 'mixed';
+  if(c>0)         return 'confirmed';
+  return 'general';
+}
+function corpusIsGapSection(title, body){
+  if(/validation gaps|needs validation|still needs validation/i.test(title)) return true;
+  var gaps=(body.match(/🔲/g)||[]).length;
+  var lines=body.split('\n').filter(function(l){return l.trim();}).length;
+  return gaps>=3 && gaps>=lines*0.5;
+}
+function corpusExtractGaps(body){
+  var out=[];
+  body.split('\n').forEach(function(line){
+    var m=line.match(/🔲\s*(.+)/); if(!m) return;
+    var q=m[1].trim().replace(/^\*+|\*+$/g,'').trim();
+    if(q.length<12) return;
+    if(/^[—\-:]/.test(q)) return;
+    if(/^(require|requires|need|needs|all)\b/i.test(q) && q.length<40) return;
+    if(/^validate\b/i.test(q) && q.length<30) return;
+    out.push({question:q, persona_id:corpusPersonaFromLine(q)});
+  });
+  return out;
+}
+function corpusIsVocab(title, body){
+  if(/vocabulary|vocab|new terms|term\b/i.test(title)){ return (body.match(/\|/g)||[]).length>6; }
+  return false;
+}
+
+function parseCorpusText(text){
+  var lines=text.split('\n'), sections=[], current=null, cat='';
+  for(var i=0;i<lines.length;i++){
+    var line=lines[i];
+    var catM=line.match(/^#\s+SECTION\s+(.+)/i);
+    var h2=line.match(/^##\s+(.+)/);
+    if(catM){ if(current){sections.push(current);current=null;} cat=catM[1].trim(); continue; }
+    if(h2){ if(current) sections.push(current); current={heading:h2[1].trim(),category:cat,lines:[]}; continue; }
+    if(current) current.lines.push(line);
+  }
+  if(current) sections.push(current);
+
+  var entries=[], gaps=[];
+  sections.forEach(function(s){
+    var body=s.lines.join('\n').trim();
+    if(!body) return;
+    var refM=s.heading.match(/^(\d+(?:\.\d+)?)\s*[—\-:.]*\s*(.*)$/);
+    var reference=refM?refM[1]:null;
+    var title=refM?refM[2].trim():s.heading;
+    if(!title) title=s.heading;
+
+    if(corpusIsGapSection(title,body)){
+      var gd=corpusGuessDomain(title,body);
+      corpusExtractGaps(body).forEach(function(g){
+        gaps.push({reference:reference,question:g.question,persona_id:g.persona_id,domain:gd});
+      });
+      return;
+    }
+    var persona=corpusDetectPersona(title,body);
+    var confidence=corpusDetectConfidence(body);
+    var hasGaps=/🔲/.test(body);
+    var domain=corpusIsVocab(title,body)?'language_profile':corpusGuessDomain(title,body);
+    if(hasGaps){
+      corpusExtractGaps(body).forEach(function(g){
+        gaps.push({reference:reference,question:g.question,persona_id:g.persona_id||(persona.id==='general'?null:persona.id),domain:domain});
+      });
+    }
+    entries.push({
+      reference:reference, title:title, content:body, domain:domain,
+      persona_id:persona.id==='general'?null:persona.id, persona_multi:persona.multi,
+      confidence:confidence, has_gaps:hasGaps, category:s.category,
+      char_count:body.length, type:corpusIsVocab(title,body)?'vocab':'entry', include:true
+    });
+  });
+  return {entries:entries, gaps:gaps};
+}
+
+/* ── Bulk import UI state ── */
+var _bulkParsed = null;
+
+function openBulkImport(){
+  document.getElementById('bulk-paste').value='';
+  document.getElementById('bulk-preview-wrap').style.display='none';
+  document.getElementById('bulk-parse-btn').style.display='';
+  document.getElementById('bulk-commit-btn').style.display='none';
+  document.getElementById('bulk-modal').style.display='flex';
+  _bulkParsed=null;
+}
+function closeBulkImport(){ document.getElementById('bulk-modal').style.display='none'; _bulkParsed=null; }
+function closeBulkImportBg(e){ if(e.target===document.getElementById('bulk-modal')) closeBulkImport(); }
+
+function runBulkParse(){
+  var text=document.getElementById('bulk-paste').value;
+  if(!text.trim()){ showToast('Paste corpus text first'); return; }
+  _bulkParsed=parseCorpusText(text);
+  renderBulkPreview();
+}
+
+var CONF_BADGE = {
+  confirmed: {bg:'#022C22',bd:'#065F46',fg:'#34D399',label:'✅ confirmed'},
+  general:   {bg:'#0A1628',bd:'#1E3A5F',fg:'#7EC8E3',label:'📚 general'},
+  mixed:     {bg:'#2D1B00',bd:'#78350F',fg:'#FCD34D',label:'◑ mixed'},
+  corrected: {bg:'#431407',bd:'#7C2D12',fg:'#FB923C',label:'⚠ corrected'},
+};
+var CORPUS_DOMAINS = ['general','health','family','economic','institutional','religious','education','language_profile'];
+var CORPUS_PERSONA_OPTS = ['general','marie-ange','lisette','jefte','nadege','dieunel','sophonie','kenzy','jonas','roseline','marilene'];
+
+function renderBulkPreview(){
+  var p=_bulkParsed; if(!p) return;
+  var wrap=document.getElementById('bulk-preview-wrap');
+  var conf={confirmed:0,general:0,mixed:0,corrected:0};
+  p.entries.forEach(function(e){ conf[e.confidence]=(conf[e.confidence]||0)+1; });
+
+  var summary='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:11px;">'+
+    '<span style="color:#CBD5E1;font-weight:600;">'+p.entries.length+' entries</span>'+
+    '<span style="color:#3A5A70;">·</span>'+
+    Object.keys(conf).filter(function(k){return conf[k];}).map(function(k){
+      return '<span style="color:'+CONF_BADGE[k].fg+';">'+conf[k]+' '+k+'</span>';
+    }).join(' ')+
+    '<span style="color:#3A5A70;">·</span>'+
+    '<span style="color:#A78BFA;">'+p.gaps.length+' gaps → worklist</span>'+
+  '</div>';
+
+  var rows=p.entries.map(function(e,i){
+    var cb=CONF_BADGE[e.confidence]||CONF_BADGE.general;
+    var domOpts=CORPUS_DOMAINS.map(function(d){return '<option value="'+d+'"'+(d===e.domain?' selected':'')+'>'+d+'</option>';}).join('');
+    var perOpts=CORPUS_PERSONA_OPTS.map(function(pp){var v=pp==='general'?'':pp;return '<option value="'+v+'"'+((e.persona_id||'')===v?' selected':'')+'>'+pp+'</option>';}).join('');
+    return '<tr style="border-bottom:1px solid #0F2040;'+(e.include?'':'opacity:.4;')+'" id="brow-'+i+'">'+
+      '<td style="padding:5px 6px;text-align:center;"><input type="checkbox" '+(e.include?'checked':'')+' onchange="bulkToggle('+i+',this.checked)"></td>'+
+      '<td style="padding:5px 6px;color:#3A5A70;font-size:10px;white-space:nowrap;">'+esc(e.reference||'—')+'</td>'+
+      '<td style="padding:5px 6px;color:#CBD5E1;font-size:11px;max-width:260px;">'+esc(e.title.slice(0,70))+(e.type==='vocab'?' <span style="color:#7EC8E3;font-size:9px;">[vocab]</span>':'')+(e.has_gaps?' <span style="color:#A78BFA;font-size:9px;">🔲</span>':'')+'</td>'+
+      '<td style="padding:5px 6px;"><select onchange="bulkSetField('+i+',\'domain\',this.value)" style="background:#040710;border:1px solid #0F2040;border-radius:4px;color:#94A3B8;font-size:10px;padding:2px 4px;">'+domOpts+'</select></td>'+
+      '<td style="padding:5px 6px;"><select onchange="bulkSetField('+i+',\'persona_id\',this.value)" style="background:#040710;border:1px solid #0F2040;border-radius:4px;color:#94A3B8;font-size:10px;padding:2px 4px;">'+perOpts+'</select>'+(e.persona_multi?'<span title="multiple personas named" style="color:#F59E0B;font-size:9px;"> *</span>':'')+'</td>'+
+      '<td style="padding:5px 6px;"><span style="background:'+cb.bg+';border:1px solid '+cb.bd+';color:'+cb.fg+';border-radius:4px;padding:1px 6px;font-size:9.5px;white-space:nowrap;">'+cb.label+'</span></td>'+
+      '<td style="padding:5px 6px;color:#3A5A70;font-size:10px;text-align:right;">'+e.char_count+'</td>'+
+    '</tr>';
+  }).join('');
+
+  var table='<div style="max-height:340px;overflow-y:auto;border:1px solid #0F2040;border-radius:7px;">'+
+    '<table style="width:100%;border-collapse:collapse;">'+
+    '<thead style="position:sticky;top:0;background:#0A1628;"><tr style="font-size:9px;color:#3A5A70;text-transform:uppercase;letter-spacing:.06em;">'+
+      '<th style="padding:6px;">✓</th><th style="padding:6px;text-align:left;">Ref</th><th style="padding:6px;text-align:left;">Title</th>'+
+      '<th style="padding:6px;text-align:left;">Domain</th><th style="padding:6px;text-align:left;">Persona</th>'+
+      '<th style="padding:6px;text-align:left;">Confidence</th><th style="padding:6px;text-align:right;">Chars</th>'+
+    '</tr></thead><tbody>'+rows+'</tbody></table></div>';
+
+  var gapsBlock='';
+  if(p.gaps.length){
+    gapsBlock='<div style="margin-top:10px;background:#130D2A;border:1px solid #2D1B6E;border-radius:7px;padding:10px 12px;">'+
+      '<div style="font-size:10px;font-weight:600;color:#A78BFA;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">'+p.gaps.length+' gaps → validation worklist</div>'+
+      '<div style="max-height:120px;overflow-y:auto;font-size:11px;color:#94A3B8;line-height:1.7;">'+
+        p.gaps.map(function(g){return '🔲 '+esc(g.question.slice(0,80))+(g.persona_id?' <span style="color:#7C3AED;">['+g.persona_id+']</span>':'');}).join('<br>')+
+      '</div></div>';
+  }
+
+  document.getElementById('bulk-preview-content').innerHTML=summary+table+gapsBlock;
+  wrap.style.display='block';
+  document.getElementById('bulk-parse-btn').style.display='none';
+  document.getElementById('bulk-commit-btn').style.display='';
+  var checked=p.entries.filter(function(e){return e.include;}).length;
+  document.getElementById('bulk-commit-btn').textContent='Import '+checked+' entries + '+p.gaps.length+' gaps';
+}
+
+function bulkToggle(i,val){ if(_bulkParsed&&_bulkParsed.entries[i]){ _bulkParsed.entries[i].include=val;
+  var row=document.getElementById('brow-'+i); if(row) row.style.opacity=val?'1':'.4';
+  var n=_bulkParsed.entries.filter(function(e){return e.include;}).length;
+  document.getElementById('bulk-commit-btn').textContent='Import '+n+' entries + '+_bulkParsed.gaps.length+' gaps';
+}}
+function bulkSetField(i,field,val){ if(_bulkParsed&&_bulkParsed.entries[i]) _bulkParsed.entries[i][field]=val||null; }
+
+async function commitBulkImport(){
+  if(!_bulkParsed) return;
+  var btn=document.getElementById('bulk-commit-btn');
+  btn.textContent='Importing…'; btn.disabled=true;
+
+  var toImport=_bulkParsed.entries.filter(function(e){return e.include;}).map(function(e){
+    return { reference:e.reference, title:e.title, content:e.content, domain:e.domain,
+      persona_id:e.persona_id||null,
+      persona_name:e.persona_id?(CORPUS_PERSONA_OPTS.indexOf(e.persona_id)>=0?e.persona_id:null):null,
+      confidence:e.confidence, has_gaps:e.has_gaps, source:'corpus_import' };
+  });
+
+  // Batch in chunks of 25 to stay well under any payload limits
+  var batchId='import-'+Date.now();
+  var totals={entries_new:0,entries_updated:0,gaps_added:0,failed:0};
+  var CHUNK=25;
+  try {
+    for(var i=0;i<toImport.length;i+=CHUNK){
+      var slice=toImport.slice(i,i+CHUNK);
+      var payload={entries:slice, batch:batchId};
+      // attach all gaps only on the first chunk
+      if(i===0) payload.gaps=_bulkParsed.gaps;
+      var res=await adminFetch('/api/corpus/bulk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      var d=await res.json();
+      if(d.success){ totals.entries_new+=d.entries_new||0; totals.entries_updated+=d.entries_updated||0; totals.gaps_added+=d.gaps_added||0; totals.failed+=d.failed||0; }
+      btn.textContent='Importing… '+Math.min(i+CHUNK,toImport.length)+'/'+toImport.length;
+    }
+    closeBulkImport();
+    await loadCorpus();
+    showToast('✓ '+totals.entries_new+' new, '+totals.entries_updated+' updated, '+totals.gaps_added+' gaps'+(totals.failed?', '+totals.failed+' failed':''));
+  } catch(e){
+    showToast('Import error: '+e.message);
+    btn.textContent='Retry import'; btn.disabled=false;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   CORPUS COVERAGE VIEW — thickness by domain / persona / confidence
+   ════════════════════════════════════════════════════════════ */
+function renderCorpusCoverage(){
+  var el=document.getElementById('corpus-coverage');
+  if(!el) return;
+  if(!corpusData.length){ el.innerHTML=''; return; }
+
+  var byDomain={}, byPersona={}, byConf={confirmed:0,general:0,mixed:0,corrected:0};
+  corpusData.forEach(function(e){
+    var d=e.domain||'general'; byDomain[d]=(byDomain[d]||0)+1;
+    var p=e.persona_name||e.persona_id||'general'; byPersona[p]=(byPersona[p]||0)+1;
+    var c=e.confidence||'general'; byConf[c]=(byConf[c]||0)+1;
+  });
+  var total=corpusData.length;
+  function bar(label,count,max,color){
+    var pct=max?Math.round(count/max*100):0;
+    return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">'+
+      '<div style="width:88px;font-size:10px;color:#94A3B8;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(label)+'</div>'+
+      '<div style="flex:1;height:12px;background:#0A1628;border-radius:3px;overflow:hidden;"><div style="height:100%;width:'+pct+'%;background:'+color+';"></div></div>'+
+      '<div style="width:24px;font-size:10px;color:#3A5A70;">'+count+'</div></div>';
+  }
+  var maxD=Math.max.apply(null,Object.values(byDomain).concat([1]));
+  var maxP=Math.max.apply(null,Object.values(byPersona).concat([1]));
+
+  var html='<div style="padding:12px;">'+
+    '<div style="font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#3A5A70;margin-bottom:8px;">Corpus Coverage — '+total+' entries</div>'+
+    '<div style="display:flex;gap:6px;margin-bottom:12px;">'+
+      Object.keys(byConf).filter(function(k){return byConf[k];}).map(function(k){var c=CONF_BADGE[k];return '<span style="background:'+c.bg+';border:1px solid '+c.bd+';color:'+c.fg+';border-radius:4px;padding:2px 7px;font-size:10px;">'+byConf[k]+' '+k+'</span>';}).join('')+
+    '</div>'+
+    '<div style="font-size:9px;color:#3A5A70;text-transform:uppercase;margin-bottom:4px;">By domain</div>'+
+    CORPUS_DOMAINS.filter(function(d){return byDomain[d];}).map(function(d){return bar(d,byDomain[d],maxD,'#2D5F8A');}).join('')+
+    '<div style="font-size:9px;color:#3A5A70;text-transform:uppercase;margin:10px 0 4px;">By persona</div>'+
+    Object.keys(byPersona).sort(function(a,b){return byPersona[b]-byPersona[a];}).map(function(p){return bar(p,byPersona[p],maxP,'#7C3AED');}).join('')+
+  '</div>';
+  el.innerHTML=html;
+}
+
+/* ════════════════════════════════════════════════════════════
+   GAPS VIEW — validation worklist
+   ════════════════════════════════════════════════════════════ */
+var gapsData=[];
+async function loadGaps(){
+  var list=document.getElementById('gaps-list');
+  if(list) list.innerHTML='<div style="padding:12px;color:#2A3A50;font-size:11.5px;">Loading…</div>';
+  try{
+    var status=document.getElementById('gaps-filter-status');
+    var url='/api/gaps'; if(status&&status.value) url+='?status='+encodeURIComponent(status.value);
+    var res=await adminFetch(url);
+    gapsData=res.ok?await res.json():[];
+  }catch(e){ gapsData=[]; }
+  buildGapsPersonaFilter();
+  renderGapsList();
+  updateGapsBadge();
+}
+function updateGapsBadge(){
+  var open=gapsData.filter(function(g){return g.status==='open';}).length;
+  var b=document.getElementById('gaps-badge');
+  if(b){ b.textContent=open; b.style.display=open>0?'inline':'none'; }
+}
+function renderGapsList(){
+  var list=document.getElementById('gaps-list');
+  if(!list) return;
+  var pf=document.getElementById('gaps-filter-persona');
+  var persona=pf?pf.value:'';
+  var rows=gapsData.filter(function(g){return !persona || (g.persona_id||'')===persona;});
+  if(!rows.length){ list.innerHTML='<div style="padding:12px;color:#2A3A50;font-size:11.5px;">No gaps'+(persona?' for this persona':'')+'.</div>'; return; }
+  var html=rows.map(function(g){
+    var statusColor=g.status==='resolved'?'#34D399':g.status==='wont_fix'?'#64748B':'#F59E0B';
+    return '<div style="padding:10px 12px;border-bottom:1px solid #0F2040;'+(g.status==='resolved'?'opacity:.55;':'')+'">'+
+      '<div style="display:flex;align-items:flex-start;gap:8px;">'+
+        '<div style="flex:1;font-size:12px;color:#CBD5E1;line-height:1.5;">'+esc(g.question)+'</div>'+
+        '<div style="width:7px;height:7px;border-radius:50%;background:'+statusColor+';flex-shrink:0;margin-top:5px;"></div>'+
+      '</div>'+
+      '<div style="font-size:10px;color:#3A5A70;margin-top:3px;">'+esc(g.persona_name||g.persona_id||'general')+' · '+esc(g.domain||'general')+(g.reference?' · '+esc(g.reference):'')+'</div>'+
+      (g.status!=='resolved'?
+        '<div style="display:flex;gap:5px;margin-top:6px;">'+
+          '<button class="btn" onclick="resolveGap(\''+esc(g.id)+'\')" style="font-size:10px;color:#34D399;border-color:#065F46;padding:3px 10px;">✓ Resolved</button>'+
+          '<button class="btn" onclick="dismissGap(\''+esc(g.id)+'\')" style="font-size:10px;padding:3px 10px;">Dismiss</button>'+
+        '</div>'
+        :(g.resolution?'<div style="font-size:11px;color:#6EE7B7;margin-top:4px;">✓ '+esc(g.resolution)+'</div>':''))+
+    '</div>';
+  }).join('');
+  list.innerHTML=html;
+}
+async function resolveGap(id){
+  var note=prompt('How was this validated? (optional resolution note)','');
+  if(note===null) return;
+  try{
+    await adminFetch('/api/gaps/'+encodeURIComponent(id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'resolved',resolution:note})});
+    gapsData=gapsData.map(function(g){return g.id===id?Object.assign({},g,{status:'resolved',resolution:note}):g;});
+    renderGapsList(); updateGapsBadge(); showToast('Gap resolved ✓');
+  }catch(e){ showToast('Could not update'); }
+}
+async function dismissGap(id){
+  try{
+    await adminFetch('/api/gaps/'+encodeURIComponent(id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'wont_fix'})});
+    gapsData=gapsData.map(function(g){return g.id===id?Object.assign({},g,{status:'wont_fix'}):g;});
+    renderGapsList(); updateGapsBadge(); showToast('Gap dismissed');
+  }catch(e){ showToast('Could not update'); }
+}
+function buildGapsPersonaFilter(){
+  var sel=document.getElementById('gaps-filter-persona');
+  if(!sel) return;
+  var cur=sel.value, seen={}, opts='<option value="">All personas</option>';
+  gapsData.forEach(function(g){ if(g.persona_id&&!seen[g.persona_id]){seen[g.persona_id]=true;opts+='<option value="'+esc(g.persona_id)+'">'+esc(g.persona_name||g.persona_id)+'</option>';}});
+  sel.innerHTML=opts; if(cur) sel.value=cur;
+}
+
+/* ════════════════════════════════════════════════════════════
+   PERSONA TEST — live test the selected persona in-panel
+   ════════════════════════════════════════════════════════════ */
+var _ptestThread = [];
+
+async function openPersonaTest(){
+  if(!selectedPersonaId){ showToast('Select a persona first'); return; }
+  if(isDirty){ var ok=await savePersonaQuiet(); if(!ok){ showToast('Save failed — cannot test'); return; } }
+  var p=personaData[selectedPersonaId]||{};
+  document.getElementById('ptest-name').textContent=p.name||selectedPersonaId;
+  _ptestThread=[];
+  renderPersonaTestThread();
+  document.getElementById('ptest-modal').style.display='flex';
+  setTimeout(function(){ document.getElementById('ptest-input').focus(); },100);
+}
+function closePersonaTest(){ document.getElementById('ptest-modal').style.display='none'; }
+function closePersonaTestBg(e){ if(e.target===document.getElementById('ptest-modal')) closePersonaTest(); }
+function clearPersonaTest(){ _ptestThread=[]; renderPersonaTestThread(); }
+
+function renderPersonaTestThread(){
+  var el=document.getElementById('ptest-thread');
+  if(!_ptestThread.length){ el.innerHTML='<div style="color:#2A3A50;font-size:11.5px;text-align:center;padding:30px 0;">Ask a question to see how this persona responds.</div>'; return; }
+  el.innerHTML=_ptestThread.map(function(m){
+    var isUser=m.role==='user';
+    return '<div style="display:flex;justify-content:'+(isUser?'flex-end':'flex-start')+';">'+
+      '<div style="max-width:80%;border-radius:8px;padding:8px 12px;font-size:12px;line-height:1.6;white-space:pre-wrap;'+
+        (isUser?'background:#0F2040;border:1px solid #1E3A5F;color:#94A3B8;':'background:#0A1628;border:1px solid #0F2040;border-left:3px solid #34D399;color:#CBD5E1;')+'">'+
+        esc(m.content)+'</div></div>';
+  }).join('');
+  el.scrollTop=el.scrollHeight;
+}
+
+async function sendPersonaTest(){
+  var input=document.getElementById('ptest-input');
+  var q=input.value.trim();
+  if(!q||!selectedPersonaId) return;
+  input.value='';
+  _ptestThread.push({role:'user',content:q});
+  renderPersonaTestThread();
+  var btn=document.getElementById('ptest-send');
+  btn.textContent='…'; btn.disabled=true;
+
+  try{
+    var res=await adminFetch('/api/personas/'+encodeURIComponent(selectedPersonaId)+'/test',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({messages:_ptestThread.map(function(m){return {role:m.role,content:m.content};})})
+    });
+    var data=await res.json();
+    var text='';
+    if(data.content&&Array.isArray(data.content)) text=data.content.filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('\n');
+    else if(data.error) text='[error] '+(data.error.message||JSON.stringify(data.error));
+    else text='[no response]';
+    _ptestThread.push({role:'assistant',content:text});
+    renderPersonaTestThread();
+  }catch(e){
+    _ptestThread.push({role:'assistant',content:'[network error] '+e.message});
+    renderPersonaTestThread();
+  }
+  btn.textContent='Send'; btn.disabled=false;
+  input.focus();
 }
