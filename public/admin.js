@@ -2261,6 +2261,9 @@ async function commitBulkImport(){
 /* ════════════════════════════════════════════════════════════
    CORPUS COVERAGE VIEW — thickness by domain / persona / confidence
    ════════════════════════════════════════════════════════════ */
+var _coverageOpen = false;
+function toggleCoverage(){ _coverageOpen = !_coverageOpen; renderCorpusCoverage(); }
+
 function renderCorpusCoverage(){
   var el=document.getElementById('corpus-coverage');
   if(!el) return;
@@ -2273,19 +2276,36 @@ function renderCorpusCoverage(){
     var c=e.confidence||'general'; byConf[c]=(byConf[c]||0)+1;
   });
   var total=corpusData.length;
+
+  // ── Compact header — always visible, one line ──
+  var chips = Object.keys(byConf).filter(function(k){return byConf[k];}).map(function(k){
+    var c=CONF_BADGE[k];
+    return '<span title="'+k+'" style="color:'+c.fg+';font-size:10px;">'+byConf[k]+'</span>';
+  }).join('<span style="color:#1E2A3A;">/</span>');
+
+  var header='<div onclick="toggleCoverage()" style="padding:9px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;" '+
+    'onmouseover="this.style.background=\'#0A1628\'" onmouseout="this.style.background=\'transparent\'">'+
+    '<span style="font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#3A5A70;">Coverage</span>'+
+    '<span style="font-size:10px;color:#CBD5E1;font-weight:600;">'+total+'</span>'+
+    '<span style="margin-left:auto;">'+chips+'</span>'+
+    '<span style="font-size:9px;color:#3A5A70;transition:transform .15s;'+(_coverageOpen?'transform:rotate(90deg);':'')+'">▶</span>'+
+  '</div>';
+
+  if(!_coverageOpen){ el.innerHTML=header; return; }
+
+  // ── Expanded detail ──
   function bar(label,count,max,color){
     var pct=max?Math.round(count/max*100):0;
     return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">'+
-      '<div style="width:88px;font-size:10px;color:#94A3B8;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(label)+'</div>'+
-      '<div style="flex:1;height:12px;background:#0A1628;border-radius:3px;overflow:hidden;"><div style="height:100%;width:'+pct+'%;background:'+color+';"></div></div>'+
-      '<div style="width:24px;font-size:10px;color:#3A5A70;">'+count+'</div></div>';
+      '<div style="width:82px;font-size:10px;color:#94A3B8;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(label)+'</div>'+
+      '<div style="flex:1;height:11px;background:#0A1628;border-radius:3px;overflow:hidden;"><div style="height:100%;width:'+pct+'%;background:'+color+';"></div></div>'+
+      '<div style="width:22px;font-size:10px;color:#3A5A70;">'+count+'</div></div>';
   }
   var maxD=Math.max.apply(null,Object.values(byDomain).concat([1]));
   var maxP=Math.max.apply(null,Object.values(byPersona).concat([1]));
 
-  var html='<div style="padding:12px;">'+
-    '<div style="font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#3A5A70;margin-bottom:8px;">Corpus Coverage — '+total+' entries</div>'+
-    '<div style="display:flex;gap:6px;margin-bottom:12px;">'+
+  var detail='<div style="padding:0 12px 12px;">'+
+    '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;">'+
       Object.keys(byConf).filter(function(k){return byConf[k];}).map(function(k){var c=CONF_BADGE[k];return '<span style="background:'+c.bg+';border:1px solid '+c.bd+';color:'+c.fg+';border-radius:4px;padding:2px 7px;font-size:10px;">'+byConf[k]+' '+k+'</span>';}).join('')+
     '</div>'+
     '<div style="font-size:9px;color:#3A5A70;text-transform:uppercase;margin-bottom:4px;">By domain</div>'+
@@ -2293,7 +2313,8 @@ function renderCorpusCoverage(){
     '<div style="font-size:9px;color:#3A5A70;text-transform:uppercase;margin:10px 0 4px;">By persona</div>'+
     Object.keys(byPersona).sort(function(a,b){return byPersona[b]-byPersona[a];}).map(function(p){return bar(p,byPersona[p],maxP,'#7C3AED');}).join('')+
   '</div>';
-  el.innerHTML=html;
+
+  el.innerHTML=header+detail;
 }
 
 /* ════════════════════════════════════════════════════════════
