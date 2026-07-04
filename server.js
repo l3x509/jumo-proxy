@@ -1080,7 +1080,88 @@ app.post('/api/corpus/bulk', async (req, res) => {
     }
   }
 
+  // ── Session logs → history store ──
+  report.logs_added = 0;
+  const logs = req.body.logs;
+  if (Array.isArray(logs) && logs.length) {
+    const logRows = logs
+      .filter(l => l.content && l.content.trim())
+      .map(l => ({
+        id:           `slog-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+        title:        l.title || 'Session summary',
+        content:      l.content.trim(),
+        import_batch: batchId,
+        created_at:   now,
+      }));
+    if (logRows.length) {
+      const { error } = await supabase.from('jumo_session_logs').insert(logRows);
+      if (error) report.errors.push('logs: ' + error.message);
+      else report.logs_added = logRows.length;
+    }
+  }
+
   res.json({ success: true, batch: batchId, ...report });
+});
+
+/* ═══════════════════════════════════════════════════════════
+   SESSION LOGS — project history (read-only view)
+   ═══════════════════════════════════════════════════════════ */
+app.get('/api/session-logs', async (req, res) => {
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
+  const { data, error } = await supabase
+    .from('jumo_session_logs').select('*').order('created_at', { ascending: false }).limit(500);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+app.delete('/api/session-logs/:id', async (req, res) => {
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
+  const { error } = await supabase.from('jumo_session_logs').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+/* Reclassify already-imported session summaries out of jumo_corpus
+   into jumo_session_logs. Matches title/content changelog signatures. */
+app.post('/api/session-logs/reclassify', async (req, res) => {
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
+
+  const { data: rows, error } = await supabase
+    .from('jumo_corpus').select('*')
+    .in('status', ['active', 'pending_review']);
+  if (error) return res.status(500).json({ error: error.message });
+
+  const isLog = (t, c) => {
+    const title = (t || '').toString();
+    const body  = (c || '').toString();
+    if (/session\s*\d*\s*summary|session\s*summary|changelog|change log|corpus version|append summary/i.test(title)) return true;
+    const signals = (body.match(/\*\*(new sections added|estimated new lines|corpus version|sources used|progress toward|corrections this session|corpus line count)/gi) || []).length;
+    return signals >= 2;
+  };
+
+  const matches = (rows || []).filter(r => isLog(r.title, r.content));
+  if (!matches.length) return res.json({ success: true, moved: 0 });
+
+  const now = new Date().toISOString();
+  const logRows = matches.map(r => ({
+    id:           `slog-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+    title:        r.title || 'Session summary',
+    content:      r.content,
+    import_batch: r.import_batch || null,
+    created_at:   r.created_at || now,
+  }));
+
+  const { error: insErr } = await supabase.from('jumo_session_logs').insert(logRows);
+  if (insErr) return res.status(500).json({ error: insErr.message });
+
+  const ids = matches.map(r => r.id);
+  const { error: delErr } = await supabase.from('jumo_corpus').delete().in('id', ids);
+  if (delErr) return res.status(500).json({ error: delErr.message });
+
+  res.json({ success: true, moved: matches.length });
 });
 
 /* ═══════════════════════════════════════════════════════════
@@ -1105,16 +1186,134 @@ app.put('/api/gaps/:id', async (req, res) => {
   if (!requireStorage(req, res)) return;
 
   const u = req.body;
-  const { error } = await supabase.from('jumo_gaps').update({
+  const patch = {
     status:     u.status     || 'open',
     resolution: u.resolution || null,
     domain:     u.domain     || 'general',
     persona_id: u.persona_id || null,
     updated_at: new Date().toISOString(),
-  }).eq('id', req.params.id);
+  };
+  if (u.starred !== undefined) patch.starred = !!u.starred;
 
+  const { error } = await supabase.from('jumo_gaps').update(patch).eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
+});
+
+/* Send all starred open gaps to the partner validation queue */
+app.post('/api/gaps/send-starred', async (req, res) => {
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
+
+  const { data: starred, error } = await supabase
+    .from('jumo_gaps').select('*').eq('starred', true).eq('status', 'open');
+  if (error) return res.status(500).json({ error: error.message });
+  if (!starred || !starred.length) return res.json({ success: true, sent: 0 });
+
+  const now = new Date().toISOString();
+  const rows = starred.map(g => ({
+    id:           `gapq-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+    persona_id:   g.persona_id   || null,
+    persona_name: g.persona_name || null,
+    domain:       g.domain       || 'general',
+    domain_label: g.domain       || 'Gap Validation',
+    content:      g.question,
+    admin_notes:  '★ Starred gap — please provide the culturally correct answer' + (g.reference ? ' (ref: '+g.reference+')' : ''),
+    item_type:    'gap_validation',
+    flag_id:      g.id,
+    status:       'pending',
+    created_at:   now,
+    updated_at:   now,
+  }));
+
+  const { error: qErr } = await supabase.from('jumo_validation_queue').insert(rows);
+  if (qErr) return res.status(500).json({ error: qErr.message });
+
+  /* Mark gaps as sent_to_partner */
+  await supabase.from('jumo_gaps')
+    .update({ status: 'sent_to_partner', updated_at: now })
+    .eq('starred', true).eq('status', 'open');
+
+  res.json({ success: true, sent: rows.length });
+});
+
+/* ═══════════════════════════════════════════════════════════
+   DASHBOARD — aggregate stats for the landing view
+   ═══════════════════════════════════════════════════════════ */
+app.get('/api/dashboard', async (req, res) => {
+  if (!requireAdmin(req, res))   return;
+  if (!requireStorage(req, res)) return;
+
+  try {
+    const [
+      corpusRes, flagsRes, gapsRes, queueRes, sessionsRes, personasRes
+    ] = await Promise.all([
+      supabase.from('jumo_corpus').select('confidence, persona_id, persona_name, created_at, import_batch').in('status', ['active','pending_review']),
+      supabase.from('jumo_flags').select('persona_id, persona_name, persona_color, status, flag_type, created_at'),
+      supabase.from('jumo_gaps').select('persona_id, status, starred'),
+      supabase.from('jumo_validation_queue').select('id').eq('status', 'pending'),
+      supabase.from('jumo_sessions').select('id, created_at, persona_id, persona_name').order('created_at', { ascending: false }).limit(5),
+      supabase.from('jumo_personas').select('id, name, color, status, voice_examples, voice_anchor, domains, updated_at'),
+    ]);
+
+    const corpus   = corpusRes.data  || [];
+    const flags    = flagsRes.data   || [];
+    const gaps     = gapsRes.data    || [];
+    const sessions = sessionsRes.data || [];
+
+    /* Corpus stats */
+    const corpusByConf = { confirmed:0, general:0, mixed:0, corrected:0 };
+    corpus.forEach(e => { const c = e.confidence||'general'; corpusByConf[c] = (corpusByConf[c]||0)+1; });
+    const lastImport = corpus.reduce((best, e) => (!best || e.created_at > best) ? e.created_at : best, null);
+
+    /* Corpus entries per persona */
+    const corpusPerPersona = {};
+    corpus.forEach(e => { const k = e.persona_id||'general'; corpusPerPersona[k] = (corpusPerPersona[k]||0)+1; });
+
+    /* Flag stats */
+    const openFlags = flags.filter(f => f.status !== 'resolved');
+    const flagsByPersona = {};
+    openFlags.forEach(f => {
+      if (!flagsByPersona[f.persona_id]) flagsByPersona[f.persona_id] = { name: f.persona_name||f.persona_id, color: f.persona_color||'#3A5A70', flags: [] };
+      flagsByPersona[f.persona_id].flags.push({ type: f.flag_type, date: f.created_at });
+    });
+
+    /* Gap stats */
+    const openGaps    = gaps.filter(g => g.status === 'open').length;
+    const starredGaps = gaps.filter(g => g.starred && g.status === 'open').length;
+
+    /* Persona readiness */
+    const DOMAINS_LIST = ['health','family','economic','institutional','religious','education','language_profile'];
+    const personas = (personasRes.data || []).map(p => {
+      const doms    = p.domains || {};
+      const exN     = Array.isArray(p.voice_examples) ? p.voice_examples.length : 0;
+      const domN    = DOMAINS_LIST.filter(d => doms[d] && doms[d].content && doms[d].content.trim()).length;
+      const valN    = DOMAINS_LIST.filter(d => doms[d] && doms[d].source === 'partner_validated').length;
+      const hasAnch = !!(p.voice_anchor && p.voice_anchor.trim());
+      const flN     = (flagsByPersona[p.id] || {flags:[]}).flags.length;
+      const corpN   = corpusPerPersona[p.id] || 0;
+      const score   = Math.max(0, Math.min(100, (Math.min(exN,8)*5) + (domN*5) + (hasAnch?10:0) - (flN*10)));
+      return { id:p.id, name:p.name, color:p.color, status:p.status, voice_examples:exN, has_anchor:hasAnch,
+               domains_with_content:domN, domains_validated:valN, open_flags:flN, corpus_entries:corpN, quality_score:score };
+    }).sort((a,b) => a.quality_score - b.quality_score); // weakest first
+
+    res.json({
+      corpus_total:       corpus.length,
+      corpus_by_conf:     corpusByConf,
+      open_flags:         openFlags.length,
+      flags_by_persona:   flagsByPersona,
+      open_gaps:          openGaps,
+      starred_gaps:       starredGaps,
+      partner_queue:      (queueRes.data||[]).length,
+      session_count:      sessions.length,
+      recent_sessions:    sessions.slice(0,3),
+      last_import:        lastImport,
+      personas,
+    });
+  } catch(e) {
+    console.error('Dashboard error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.delete('/api/gaps/:id', async (req, res) => {
