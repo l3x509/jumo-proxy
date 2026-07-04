@@ -106,8 +106,7 @@ function initByRole() {
     document.getElementById('hdr-refresh').style.display = '';
     document.getElementById('hdr-export').style.display = '';
     buildDomainBlocks();
-    showTab('sessions');
-    loadSessions();
+    showTab('dashboard');
   } else if (currentRole === 'partner') {
     document.getElementById('role-badge').textContent = 'Patnè Kiltirèl';
     document.getElementById('role-badge').style.color = '#34D399';
@@ -120,16 +119,20 @@ function initByRole() {
    TAB NAVIGATION (admin)
    ════════════════════════════ */
 function showTab(tab) {
+  var dv = document.getElementById('dashboard-view'); if (dv) dv.classList.toggle('active', tab==='dashboard');
   document.getElementById('sessions-view').classList.toggle('active', tab==='sessions');
   document.getElementById('personas-view').classList.toggle('active', tab==='personas');
   document.getElementById('flags-view').classList.toggle('active', tab==='flags');
   document.getElementById('corpus-view').classList.toggle('active', tab==='corpus');
   var gv = document.getElementById('gaps-view'); if (gv) gv.classList.toggle('active', tab==='gaps');
+  var hv = document.getElementById('history-view'); if (hv) hv.classList.toggle('active', tab==='history');
   document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.toggle('tab-active', b.dataset.tab===tab); });
+  if (tab==='dashboard') loadDashboard();
   if (tab==='personas' && Object.keys(personaData).length===0) loadPersonas();
-  if (tab==='flags')  loadFlags();
-  if (tab==='corpus') loadCorpus();
-  if (tab==='gaps')   loadGaps();
+  if (tab==='flags')   loadFlags();
+  if (tab==='corpus')  loadCorpus();
+  if (tab==='gaps')    loadGaps();
+  if (tab==='history') loadHistory();
 }
 
 /* ════════════════════════════
@@ -429,9 +432,11 @@ function populateEditor(p) {
   readiness.push(exN+' voice example'+(exN===1?'':'s'));
   readiness.push(hasAnchor?'anchor set':'no anchor');
   if (openFlags) readiness.push('⚑ '+openFlags+' open flag'+(openFlags===1?'':'s'));
+  var corpN = corpusData.filter(function(e){ return e.persona_id===p.id; }).length;
+  var corpLink = corpN ? ' · <button onclick="showTab(\'corpus\');filterCorpusByPersona(\''+p.id+'\')" style="background:transparent;border:none;color:#7EC8E3;font-size:10px;cursor:pointer;font-family:inherit;padding:0;text-decoration:underline;">'+corpN+' corpus entries →</button>' : '';
   document.getElementById('pe-version').innerHTML =
     'Version '+(p.version||1)+' · Last saved '+esc(upd)+
-    ' <span style="color:'+(exN>=3?'#34D399':exN>0?'#F59E0B':'#EF4444')+';">· '+readiness.join(' · ')+'</span>';
+    ' <span style="color:'+(exN>=3?'#34D399':exN>0?'#F59E0B':'#EF4444')+';">· '+readiness.join(' · ')+'</span>'+corpLink;
   document.getElementById('persona-detail-empty').style.display='none';
   document.getElementById('persona-editor').style.display='block';
   /* ── PATCH: Voice & behavior fields ── */
@@ -1576,6 +1581,13 @@ async function loadCorpus() {
   renderCorpusCoverage();
 }
 
+/* Cross-link helper: jump to corpus filtered to a persona */
+function filterCorpusByPersona(personaId){
+  var sel = document.getElementById('corpus-filter-persona');
+  if (sel) { sel.value = personaId; }
+  if (!corpusData.length) { loadCorpus(); } else { renderCorpusList(); }
+}
+
 function buildCorpusPersonaFilter() {
   var sel = document.getElementById('corpus-filter-persona');
   if (!sel) return;
@@ -1606,6 +1618,22 @@ function renderCorpusList() {
   var cf = document.getElementById('corpus-filter-confidence') ? document.getElementById('corpus-filter-confidence').value : '';
   var qEl = document.getElementById('corpus-search');
   var q = qEl ? qEl.value.trim().toLowerCase() : '';
+
+  // Reference jump: if the query looks like a section ref (e.g. "26.97", "2.1"),
+  // jump directly to that entry and select it
+  if (q && /^\d+(?:\.\d+)?$/.test(q)) {
+    var refMatch = corpusData.find(function(e){ return (e.reference||'') === q; });
+    if (refMatch) {
+      var filteredForRef = [refMatch];
+      var listEl = document.getElementById('corpus-list');
+      listEl.innerHTML = '<div class="s-item active" onclick="selectCorpusEntry(\''+esc(refMatch.id)+'\')" style="border-left:3px solid '+personaColor(refMatch.persona_id)+'">'+
+        '<div style="font-size:11.5px;font-weight:600;color:#34D399;">↵ Jump: '+esc(refMatch.reference)+'</div>'+
+        '<div style="font-size:11.5px;color:#CBD5E1;margin-top:1px;">'+esc(refMatch.title||refMatch.content.slice(0,50))+'</div>'+
+      '</div>';
+      selectCorpusEntry(refMatch.id);
+      return;
+    }
+  }
   var filtered = corpusData.filter(function(e) {
     if (pf && pf !== 'general' && e.persona_id !== pf) return false;
     if (pf === 'general' && e.persona_id) return false;
@@ -1651,6 +1679,27 @@ function selectCorpusEntry(id) {
   var color = personaColor(e.persona_id) || '#3A5A70';
   var dt = e.created_at ? new Date(e.created_at).toLocaleString() : '';
   var domainLabel = DOMAIN_INFO[e.domain] ? DOMAIN_INFO[e.domain].label : (e.domain || 'General');
+
+  /* ── Persona chips — who this entry relates to ── */
+  var personaChips = '';
+  var linkedPersonas = [];
+  if (e.persona_id) linkedPersonas.push({ id: e.persona_id, name: e.persona_name||e.persona_id });
+  else {
+    // Scan content for persona name mentions
+    CORPUS_PERSONA_NAMES.forEach(function(p){
+      if (p.match.some(function(m){ return (e.content||'').toLowerCase().indexOf(m) !== -1; }))
+        linkedPersonas.push({ id: p.id, name: p.id });
+    });
+  }
+  if (linkedPersonas.length) {
+    personaChips = '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;">' +
+      linkedPersonas.map(function(p){
+        var c = personaColor(p.id);
+        return '<button onclick="showTab(\'personas\');selectPersona(\''+esc(p.id)+'\')" title="Open persona editor" style="background:'+c+'22;border:1px solid '+c+'55;border-radius:5px;color:'+c+';font-size:10px;padding:2px 9px;cursor:pointer;font-family:inherit;">'+esc(p.name)+'</button>';
+      }).join('') +
+    '</div>';
+  }
+
   var html = '<div class="anim">'+
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #0F2040;">'+
       '<div style="flex:1;">'+
@@ -1660,7 +1709,9 @@ function selectCorpusEntry(id) {
         '</div>'+
         '<div style="font-size:10.5px;color:#3A5A70;margin-top:3px;">'+
           esc(e.persona_name||'General')+' · '+esc(domainLabel)+' · '+(SOURCE_LABELS[e.source]||e.source)+' · '+esc(dt)+
+          (e.confidence?' · <span style="color:'+(e.confidence==='confirmed'?'#34D399':e.confidence==='general'?'#7EC8E3':e.confidence==='mixed'?'#FCD34D':'#FB923C')+';">'+(e.confidence==='confirmed'?'✅':e.confidence==='general'?'📚':e.confidence==='mixed'?'◑':'⚠')+' '+e.confidence+'</span>':'')+
         '</div>'+
+        personaChips+
       '</div>'+
       (e.status==='pending_review'?'<button class="btn btn-success" onclick="approveCorpusEntry(\''+esc(e.id)+'\')" style="flex-shrink:0;">✓ Approve</button>':'')+
       '<button class="btn" onclick="openCorpusForm(\''+esc(e.id)+'\')" style="flex-shrink:0;">✎ Edit</button>'+
@@ -1669,6 +1720,7 @@ function selectCorpusEntry(id) {
     '<div style="background:#0A1628;border:1px solid #0F2040;border-left:3px solid '+color+';border-radius:8px;padding:12px 14px;font-size:12.5px;color:#CBD5E1;line-height:1.7;white-space:pre-wrap;margin-bottom:12px;">'+esc(e.content)+'</div>'+
     (e.notes ? '<div style="font-size:11.5px;color:#64748B;line-height:1.6;font-style:italic;">'+esc(e.notes)+'</div>' : '')+
     (e.reference ? '<div style="margin-top:10px;font-size:10.5px;color:#3A5A70;">Reference: '+esc(e.reference)+'</div>' : '')+
+    (e.has_gaps ? '<div style="margin-top:8px;font-size:10.5px;color:#A78BFA;">🔲 This entry has validation gaps in the Gaps tab.</div>' : '')+
     '<div style="margin-top:14px;">'+
       '<button class="btn" onclick="downloadCorpusEntry(\''+esc(e.id)+'\')" style="font-size:11px;">⬇ Download as .md snippet</button>'+
     '</div>'+
@@ -2094,7 +2146,7 @@ function parseCorpusText(text){
   }
   if(current) sections.push(current);
 
-  var entries=[], gaps=[];
+  var entries=[], gaps=[], logs=[];
   sections.forEach(function(s){
     var body=s.lines.join('\n').trim();
     if(!body) return;
@@ -2102,6 +2154,12 @@ function parseCorpusText(text){
     var reference=refM?refM[1]:null;
     var title=refM?refM[2].trim():s.heading;
     if(!title) title=s.heading;
+
+    // Session summaries / changelogs → History, never corpus
+    if(corpusIsSessionLog(title,body)){
+      logs.push({ title:s.heading.trim(), content:body, char_count:body.length });
+      return;
+    }
 
     if(corpusIsGapSection(title,body)){
       var gd=corpusGuessDomain(title,body);
@@ -2126,7 +2184,15 @@ function parseCorpusText(text){
       char_count:body.length, type:corpusIsVocab(title,body)?'vocab':'entry', include:true
     });
   });
-  return {entries:entries, gaps:gaps};
+  return {entries:entries, gaps:gaps, logs:logs};
+}
+
+// Session-summary / changelog detector — these are project history, not corpus
+function corpusIsSessionLog(title, body){
+  if(/session\s*\d*\s*summary|session\s*summary|changelog|change log|corpus version|append summary/i.test(title)) return true;
+  // body signature: several changelog-style bolded meta lines
+  var signals = (body.match(/\*\*(new sections added|estimated new lines|corpus version|sources used|progress toward|corrections this session|corpus line count)/gi) || []).length;
+  return signals >= 2;
 }
 
 /* ── Bulk import UI state ── */
@@ -2173,6 +2239,7 @@ function renderBulkPreview(){
     }).join(' ')+
     '<span style="color:#3A5A70;">·</span>'+
     '<span style="color:#A78BFA;">'+p.gaps.length+' gaps → worklist</span>'+
+    ((p.logs&&p.logs.length)?'<span style="color:#3A5A70;">·</span><span style="color:#D4A017;">'+p.logs.length+' session logs → history</span>':'')+
   '</div>';
 
   var rows=p.entries.map(function(e,i){
@@ -2207,7 +2274,16 @@ function renderBulkPreview(){
       '</div></div>';
   }
 
-  document.getElementById('bulk-preview-content').innerHTML=summary+table+gapsBlock;
+  var logsBlock='';
+  if(p.logs&&p.logs.length){
+    logsBlock='<div style="margin-top:10px;background:#1A1400;border:1px solid #3A2E00;border-radius:7px;padding:10px 12px;">'+
+      '<div style="font-size:10px;font-weight:600;color:#D4A017;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">'+p.logs.length+' session summaries → History (not corpus)</div>'+
+      '<div style="max-height:90px;overflow-y:auto;font-size:11px;color:#94A3B8;line-height:1.7;">'+
+        p.logs.map(function(l){return '📝 '+esc(l.title.slice(0,70));}).join('<br>')+
+      '</div></div>';
+  }
+
+  document.getElementById('bulk-preview-content').innerHTML=summary+table+gapsBlock+logsBlock;
   wrap.style.display='block';
   document.getElementById('bulk-parse-btn').style.display='none';
   document.getElementById('bulk-commit-btn').style.display='';
@@ -2236,22 +2312,28 @@ async function commitBulkImport(){
 
   // Batch in chunks of 25 to stay well under any payload limits
   var batchId='import-'+Date.now();
-  var totals={entries_new:0,entries_updated:0,gaps_added:0,failed:0};
+  var totals={entries_new:0,entries_updated:0,gaps_added:0,logs_added:0,failed:0};
   var CHUNK=25;
   try {
+    // If there are no corpus entries but there are logs/gaps, still send one call
+    if(!toImport.length && ((_bulkParsed.logs&&_bulkParsed.logs.length)||_bulkParsed.gaps.length)){
+      var res0=await adminFetch('/api/corpus/bulk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entries:[],gaps:_bulkParsed.gaps,logs:_bulkParsed.logs||[],batch:batchId})});
+      var d0=await res0.json();
+      if(d0.success){ totals.gaps_added+=d0.gaps_added||0; totals.logs_added+=d0.logs_added||0; }
+    }
     for(var i=0;i<toImport.length;i+=CHUNK){
       var slice=toImport.slice(i,i+CHUNK);
       var payload={entries:slice, batch:batchId};
-      // attach all gaps only on the first chunk
-      if(i===0) payload.gaps=_bulkParsed.gaps;
+      // attach all gaps + logs only on the first chunk
+      if(i===0){ payload.gaps=_bulkParsed.gaps; payload.logs=_bulkParsed.logs||[]; }
       var res=await adminFetch('/api/corpus/bulk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
       var d=await res.json();
-      if(d.success){ totals.entries_new+=d.entries_new||0; totals.entries_updated+=d.entries_updated||0; totals.gaps_added+=d.gaps_added||0; totals.failed+=d.failed||0; }
+      if(d.success){ totals.entries_new+=d.entries_new||0; totals.entries_updated+=d.entries_updated||0; totals.gaps_added+=d.gaps_added||0; totals.logs_added+=d.logs_added||0; totals.failed+=d.failed||0; }
       btn.textContent='Importing… '+Math.min(i+CHUNK,toImport.length)+'/'+toImport.length;
     }
     closeBulkImport();
     await loadCorpus();
-    showToast('✓ '+totals.entries_new+' new, '+totals.entries_updated+' updated, '+totals.gaps_added+' gaps'+(totals.failed?', '+totals.failed+' failed':''));
+    showToast('✓ '+totals.entries_new+' new, '+totals.entries_updated+' updated, '+totals.gaps_added+' gaps'+(totals.logs_added?', '+totals.logs_added+' logs':'')+(totals.failed?', '+totals.failed+' failed':''));
   } catch(e){
     showToast('Import error: '+e.message);
     btn.textContent='Retry import'; btn.disabled=false;
@@ -2347,22 +2429,58 @@ function renderGapsList(){
   var rows=gapsData.filter(function(g){return !persona || (g.persona_id||'')===persona;});
   if(!rows.length){ list.innerHTML='<div style="padding:12px;color:#2A3A50;font-size:11.5px;">No gaps'+(persona?' for this persona':'')+'.</div>'; return; }
   var html=rows.map(function(g){
-    var statusColor=g.status==='resolved'?'#34D399':g.status==='wont_fix'?'#64748B':'#F59E0B';
-    return '<div style="padding:10px 12px;border-bottom:1px solid #0F2040;'+(g.status==='resolved'?'opacity:.55;':'')+'">'+
-      '<div style="display:flex;align-items:flex-start;gap:8px;">'+
+    var statusColor=g.status==='resolved'?'#34D399':g.status==='wont_fix'?'#64748B':g.status==='sent_to_partner'?'#22D3EE':'#F59E0B';
+    var isOpen=g.status==='open';
+    return '<div style="padding:10px 12px;border-bottom:1px solid #0F2040;'+(g.status==='resolved'||g.status==='wont_fix'?'opacity:.55;':'')+'" id="gap-row-'+esc(g.id)+'">'+
+      '<div style="display:flex;align-items:flex-start;gap:6px;">'+
+        '<button class="star-btn'+(g.starred?' starred':'')+'" onclick="toggleGapStar(\''+esc(g.id)+'\','+(!g.starred)+')" title="'+(g.starred?'Unstar':'Star to send to partner')+'">★</button>'+
         '<div style="flex:1;font-size:12px;color:#CBD5E1;line-height:1.5;">'+esc(g.question)+'</div>'+
         '<div style="width:7px;height:7px;border-radius:50%;background:'+statusColor+';flex-shrink:0;margin-top:5px;"></div>'+
       '</div>'+
-      '<div style="font-size:10px;color:#3A5A70;margin-top:3px;">'+esc(g.persona_name||g.persona_id||'general')+' · '+esc(g.domain||'general')+(g.reference?' · '+esc(g.reference):'')+'</div>'+
-      (g.status!=='resolved'?
-        '<div style="display:flex;gap:5px;margin-top:6px;">'+
+      '<div style="font-size:10px;color:#3A5A70;margin-top:3px;padding-left:20px;">'+esc(g.persona_name||g.persona_id||'general')+' · '+esc(g.domain||'general')+(g.reference?' · '+esc(g.reference):'')+'</div>'+
+      (isOpen?
+        '<div style="display:flex;gap:5px;margin-top:6px;padding-left:20px;">'+
           '<button class="btn" onclick="resolveGap(\''+esc(g.id)+'\')" style="font-size:10px;color:#34D399;border-color:#065F46;padding:3px 10px;">✓ Resolved</button>'+
           '<button class="btn" onclick="dismissGap(\''+esc(g.id)+'\')" style="font-size:10px;padding:3px 10px;">Dismiss</button>'+
         '</div>'
-        :(g.resolution?'<div style="font-size:11px;color:#6EE7B7;margin-top:4px;">✓ '+esc(g.resolution)+'</div>':''))+
+        :(g.status==='sent_to_partner'?'<div style="font-size:10px;color:#22D3EE;margin-top:3px;padding-left:20px;">↗ Sent to partner</div>':'')+
+        (g.resolution?'<div style="font-size:11px;color:#6EE7B7;margin-top:4px;padding-left:20px;">✓ '+esc(g.resolution)+'</div>':''))+
     '</div>';
   }).join('');
   list.innerHTML=html;
+  updateStarredCount();
+}
+
+function updateStarredCount(){
+  var n=gapsData.filter(function(g){return g.starred && g.status==='open';}).length;
+  var countEl=document.getElementById('gaps-starred-count');
+  var sendBtn=document.getElementById('gaps-send-starred-btn');
+  if(countEl){ countEl.textContent='★ '+n; countEl.style.display=n?'inline':'none'; }
+  if(sendBtn){ sendBtn.style.display=n?'block':'none'; sendBtn.textContent='★ Send '+n+' starred to partner ↗'; }
+}
+
+async function toggleGapStar(id, starred){
+  try{
+    await adminFetch('/api/gaps/'+encodeURIComponent(id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({starred:starred})});
+    gapsData=gapsData.map(function(g){return g.id===id?Object.assign({},g,{starred:starred}):g;});
+    renderGapsList();
+  }catch(e){ showToast('Could not update'); }
+}
+
+async function sendStarredToPartner(){
+  var n=gapsData.filter(function(g){return g.starred&&g.status==='open';}).length;
+  if(!n){ showToast('No starred gaps to send'); return; }
+  if(!confirm('Send '+n+' starred gaps to the partner validation queue?')) return;
+  var btn=document.getElementById('gaps-send-starred-btn');
+  if(btn){ btn.textContent='Sending…'; btn.disabled=true; }
+  try{
+    var res=await adminFetch('/api/gaps/send-starred',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    var d=await res.json();
+    if(d.success){
+      showToast('↗ '+d.sent+' gaps sent to partner queue');
+      await loadGaps();
+    } else { showToast('Error: '+(d.error||'unknown')); if(btn){btn.textContent='★ Send starred to partner ↗';btn.disabled=false;} }
+  }catch(e){ showToast('Network error'); if(btn){btn.textContent='★ Send starred to partner ↗';btn.disabled=false;} }
 }
 async function resolveGap(id){
   var note=prompt('How was this validated? (optional resolution note)','');
@@ -2448,4 +2566,199 @@ async function sendPersonaTest(){
   }
   btn.textContent='Send'; btn.disabled=false;
   input.focus();
+}
+
+/* ════════════════════════════════════════════════════════════
+   HISTORY — session summaries / changelogs (read-only)
+   ════════════════════════════════════════════════════════════ */
+var historyData=[], selectedHistoryId=null;
+
+async function loadHistory(){
+  var list=document.getElementById('history-list');
+  if(list) list.innerHTML='<div style="padding:12px;color:#2A3A50;font-size:11.5px;">Loading…</div>';
+  try{
+    var res=await adminFetch('/api/session-logs');
+    historyData=res.ok?await res.json():[];
+  }catch(e){ historyData=[]; }
+  renderHistoryList();
+}
+function renderHistoryList(){
+  var list=document.getElementById('history-list');
+  if(!list) return;
+  if(!historyData.length){ list.innerHTML='<div style="padding:12px;color:#2A3A50;font-size:11.5px;">No session summaries yet. They appear here when imported from the corpus.</div>'; return; }
+  list.innerHTML=historyData.map(function(h){
+    var dt=h.created_at?new Date(h.created_at).toLocaleDateString([], {month:'short',day:'numeric',year:'2-digit'}):'';
+    return '<div class="s-item'+(h.id===selectedHistoryId?' active':'')+'" onclick="selectHistory(\''+esc(h.id)+'\')" style="border-left:3px solid #D4A017;">'+
+      '<div style="font-size:11.5px;font-weight:600;color:#CBD5E1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(h.title||'Session summary')+'</div>'+
+      '<div style="font-size:10px;color:#2A3A50;margin-top:2px;">'+esc(dt)+'</div>'+
+    '</div>';
+  }).join('');
+}
+function selectHistory(id){
+  selectedHistoryId=id; renderHistoryList();
+  var h=historyData.find(function(x){return x.id===id;});
+  if(!h) return;
+  var dt=h.created_at?new Date(h.created_at).toLocaleString():'';
+  document.getElementById('history-detail').innerHTML='<div class="anim">'+
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #0F2040;">'+
+      '<div style="flex:1;"><div style="font-size:15px;font-weight:600;color:#E2E8F0;">'+esc(h.title||'Session summary')+'</div>'+
+      '<div style="font-size:10.5px;color:#3A5A70;margin-top:2px;">'+esc(dt)+' · project history</div></div>'+
+      '<button class="btn" onclick="deleteHistory(\''+esc(h.id)+'\')" style="color:#EF4444;border-color:#3A1A1A;">Delete</button>'+
+    '</div>'+
+    '<div style="background:#0A1628;border:1px solid #0F2040;border-radius:8px;padding:14px 16px;font-size:12.5px;color:#CBD5E1;line-height:1.7;white-space:pre-wrap;">'+esc(h.content)+'</div>'+
+  '</div>';
+}
+async function deleteHistory(id){
+  if(!confirm('Delete this session summary permanently?')) return;
+  try{
+    await adminFetch('/api/session-logs/'+encodeURIComponent(id),{method:'DELETE'});
+    historyData=historyData.filter(function(h){return h.id!==id;});
+    selectedHistoryId=null; renderHistoryList();
+    document.getElementById('history-detail').innerHTML='<div style="color:#2A3A50;font-size:12px;padding-top:40px;text-align:center;">Deleted.</div>';
+    showToast('Session summary deleted');
+  }catch(e){ showToast('Could not delete'); }
+}
+
+async function reclassifyLogs(){
+  if(!confirm('Scan the corpus for session summaries / changelogs and move them here?\n\nThis removes them from the corpus so personas never retrieve them.')) return;
+  try{
+    var res=await adminFetch('/api/session-logs/reclassify',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    var d=await res.json();
+    if(d.success){
+      showToast(d.moved?('✓ Moved '+d.moved+' summaries out of corpus'):'No session summaries found in corpus');
+      loadHistory();
+    } else { showToast('Error: '+(d.error||'unknown')); }
+  }catch(e){ showToast('Network error: '+e.message); }
+}
+
+/* ════════════════════════════════════════════════════════════
+   DASHBOARD — landing view with aggregated status
+   ════════════════════════════════════════════════════════════ */
+var _dashData = null;
+
+async function loadDashboard(){
+  var el=document.getElementById('dashboard-content');
+  if(el) el.innerHTML='<div style="color:#2A3A50;font-size:12px;padding:40px 0;text-align:center;">Loading…</div>';
+  try{
+    var res=await adminFetch('/api/dashboard');
+    if(!res.ok) throw new Error('status '+res.status);
+    _dashData=await res.json();
+    renderDashboard(_dashData);
+  }catch(e){
+    if(el) el.innerHTML='<div style="color:#EF4444;font-size:12px;padding:40px 0;text-align:center;">Could not load dashboard: '+esc(e.message)+'</div>';
+  }
+}
+
+function renderDashboard(d){
+  var el=document.getElementById('dashboard-content');
+  if(!el) return;
+
+  /* ── Confidence chip helper ── */
+  function confChip(label, n, bg, bd, fg){
+    return n?'<span style="background:'+bg+';border:1px solid '+bd+';color:'+fg+';border-radius:4px;padding:2px 8px;font-size:10px;">'+n+' '+label+'</span>':'';
+  }
+
+  /* ── Stat cards ── */
+  var confirmedPct = d.corpus_total ? Math.round((d.corpus_by_conf.confirmed||0)/d.corpus_total*100) : 0;
+  var cards='<div class="dash-cards">'+
+    '<div class="dash-card '+(d.corpus_total>50?'good':'warn')+'" onclick="showTab(\'corpus\')" style="cursor:pointer;" title="Open corpus">'+
+      '<div class="dash-card-n">'+d.corpus_total+'</div>'+
+      '<div class="dash-card-l">Corpus entries</div>'+
+      '<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;">'+
+        confChip('conf',''+d.corpus_by_conf.confirmed,'#022C22','#065F46','#34D399')+
+        confChip('gen',''+d.corpus_by_conf.general,'#0A1628','#1E3A5F','#7EC8E3')+
+        confChip('mix',''+d.corpus_by_conf.mixed,'#2D1B00','#78350F','#FCD34D')+
+        confChip('fix',''+d.corpus_by_conf.corrected,'#431407','#7C2D12','#FB923C')+
+      '</div>'+
+    '</div>'+
+    '<div class="dash-card '+(confirmedPct>=30?'good':confirmedPct>=10?'warn':'alert')+'" onclick="showTab(\'corpus\')" style="cursor:pointer;">'+
+      '<div class="dash-card-n">'+confirmedPct+'%</div>'+
+      '<div class="dash-card-l">Validated</div>'+
+      '<div style="height:5px;background:#0A1628;border-radius:3px;margin-top:8px;overflow:hidden;"><div style="height:100%;width:'+confirmedPct+'%;background:#34D399;border-radius:3px;"></div></div>'+
+    '</div>'+
+    '<div class="dash-card '+(d.open_flags>0?'alert':'good')+'" onclick="showTab(\'flags\')" style="cursor:pointer;" title="Open flags">'+
+      '<div class="dash-card-n">'+d.open_flags+'</div>'+
+      '<div class="dash-card-l">Open flags</div>'+
+    '</div>'+
+    '<div class="dash-card warn" onclick="showTab(\'gaps\')" style="cursor:pointer;">'+
+      '<div class="dash-card-n">'+d.open_gaps+'</div>'+
+      '<div class="dash-card-l">Open gaps</div>'+
+    '</div>'+
+    (d.starred_gaps?'<div class="dash-card gold" onclick="showTab(\'gaps\')" style="cursor:pointer;" title="Send starred gaps to partner">'+
+      '<div class="dash-card-n">★ '+d.starred_gaps+'</div>'+
+      '<div class="dash-card-l">Ready for partner</div>'+
+      '<button onclick="event.stopPropagation();showTab(\'gaps\');setTimeout(sendStarredToPartner,300)" style="margin-top:8px;background:#2D1B00;border:1px solid #D4A017;border-radius:5px;color:#D4A017;font-size:10px;padding:3px 8px;cursor:pointer;font-family:inherit;">Send ↗</button>'+
+    '</div>':'<div class="dash-card" onclick="showTab(\'gaps\')" style="cursor:pointer;">'+
+      '<div class="dash-card-n">0</div>'+
+      '<div class="dash-card-l">Starred gaps</div>'+
+      '<div style="font-size:10px;color:#3A5A70;margin-top:4px;">Star gaps to prioritize for partner</div>'+
+    '</div>')+
+    (d.partner_queue?'<div class="dash-card info">'+
+      '<div class="dash-card-n">'+d.partner_queue+'</div>'+
+      '<div class="dash-card-l">Partner queue</div>'+
+    '</div>':'')+
+  '</div>';
+
+  /* ── Persona readiness ── */
+  function qualColor(s){ return s>=60?'#34D399':s>=30?'#F59E0B':'#EF4444'; }
+  var personaRows=(d.personas||[]).map(function(p){
+    var c=qualColor(p.quality_score);
+    var initials=p.name.split(/[\s-]/).slice(0,2).map(function(w){return w[0]||'';}).join('').toUpperCase();
+    return '<div class="quality-row" onclick="showTab(\'personas\');selectPersona(\''+esc(p.id)+'\')" title="Open '+esc(p.name)+'">'+
+      '<div style="width:22px;height:22px;border-radius:5px;background:'+esc(p.color)+';display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#05090F;flex-shrink:0;">'+initials+'</div>'+
+      '<div style="flex:1;min-width:0;">'+
+        '<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">'+
+          '<span style="font-size:11px;font-weight:600;color:#CBD5E1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(p.name)+'</span>'+
+          (p.open_flags?'<span style="color:#EF4444;font-size:9.5px;flex-shrink:0;">⚑'+p.open_flags+'</span>':'')+
+        '</div>'+
+        '<div class="quality-bar-bg"><div class="quality-bar-fill" style="width:'+p.quality_score+'%;background:'+c+';"></div></div>'+
+      '</div>'+
+      '<div style="text-align:right;flex-shrink:0;">'+
+        '<div style="font-size:11px;font-weight:600;color:'+c+';">'+p.quality_score+'</div>'+
+        '<div style="font-size:9px;color:#3A5A70;">'+p.voice_examples+'ex·'+p.domains_with_content+'dom</div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+
+  var personaSection='<div class="dash-section">'+
+    '<div class="dash-section-title">Personas — by readiness (weakest first) <span style="font-weight:normal;text-transform:none;letter-spacing:0;color:#2A3A50;">score = voice+domains−flags</span></div>'+
+    personaRows+
+  '</div>';
+
+  /* ── Needs attention: open flags ── */
+  var flagRows='';
+  var fp=d.flags_by_persona||{};
+  Object.keys(fp).forEach(function(pid){
+    var pf=fp[pid];
+    flagRows+='<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #0A1628;cursor:pointer;" onclick="showTab(\'flags\')">'+
+      '<div style="width:8px;height:8px;border-radius:50%;background:'+esc(pf.color)+';flex-shrink:0;"></div>'+
+      '<div style="flex:1;font-size:11.5px;color:#CBD5E1;">'+esc(pf.name)+'</div>'+
+      '<div style="font-size:10px;color:#EF4444;">⚑ '+pf.flags.length+'</div>'+
+    '</div>';
+  });
+  var attentionSection='<div class="dash-section">'+
+    '<div class="dash-section-title">Needs attention</div>'+
+    (flagRows?'<div style="font-size:9.5px;color:#3A5A70;margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em;">Open flags</div>'+flagRows:
+      '<div style="font-size:11.5px;color:#34D399;">✓ No open flags</div>')+
+    (d.starred_gaps?'<div style="margin-top:12px;background:#1A1400;border:1px solid #3A2E00;border-radius:6px;padding:10px 12px;">'+
+      '<div style="font-size:11.5px;color:#D4A017;font-weight:600;margin-bottom:4px;">★ '+d.starred_gaps+' gaps ready to send to partner</div>'+
+      '<button onclick="showTab(\'gaps\');setTimeout(sendStarredToPartner,300)" style="background:#2D1B00;border:1px solid #D4A017;border-radius:5px;color:#D4A017;font-size:10.5px;padding:4px 12px;cursor:pointer;font-family:inherit;margin-top:4px;">Send starred to partner ↗</button>'+
+    '</div>':'')+
+  '</div>';
+
+  /* ── Recent activity ── */
+  var lastImportStr = d.last_import ? (function(){ var da=new Date(d.last_import); return da.toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'}); })() : 'Never';
+  var activitySection='<div class="dash-section">'+
+    '<div class="dash-section-title">Recent activity</div>'+
+    '<div style="display:flex;gap:20px;flex-wrap:wrap;font-size:11.5px;">'+
+      '<div><span style="color:#3A5A70;">Last corpus import:</span> <span style="color:#CBD5E1;">'+lastImportStr+'</span></div>'+
+      '<div><span style="color:#3A5A70;">Partner queue:</span> <span style="color:#CBD5E1;">'+(d.partner_queue||0)+' pending</span></div>'+
+      '<div><span style="color:#3A5A70;">Total sessions:</span> <span style="color:#CBD5E1;">'+(d.session_count||0)+'</span> <button onclick="showTab(\'sessions\')" style="background:transparent;border:none;color:#7EC8E3;font-size:10px;cursor:pointer;font-family:inherit;text-decoration:underline;">View →</button></div>'+
+    '</div>'+
+    ((d.recent_sessions||[]).length?'<div style="margin-top:10px;font-size:10px;color:#3A5A70;">Recent: '+(d.recent_sessions||[]).map(function(s){ return esc(s.persona_name||s.persona_id||'?'); }).join(', ')+'</div>':'')+
+  '</div>';
+
+  el.innerHTML=cards+
+    '<div class="dash-two-col">'+personaSection+attentionSection+'</div>'+
+    activitySection;
 }
