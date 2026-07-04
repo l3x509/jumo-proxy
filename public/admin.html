@@ -32,11 +32,20 @@
 
 <!-- TAB BAR (admin only) -->
 <div id="tab-bar">
-  <button class="tab-btn tab-active" data-tab="sessions" onclick="showTab('sessions')">Sessions</button>
+  <button class="tab-btn tab-active" data-tab="dashboard" onclick="showTab('dashboard')">Dashboard</button>
+  <button class="tab-btn" data-tab="sessions" onclick="showTab('sessions')">Sessions</button>
   <button class="tab-btn" data-tab="personas" onclick="showTab('personas')">Personas</button>
   <button class="tab-btn" data-tab="flags" onclick="showTab('flags')">⚑ Flags <span id="flags-badge" style="display:none;background:#7F1D1D;color:#FCA5A5;border-radius:99px;padding:1px 6px;font-size:10px;margin-left:2px">0</span></button>
   <button class="tab-btn" data-tab="corpus" onclick="showTab('corpus')">Corpus <span id="corpus-badge" style="display:none;background:#1E3A5F;color:#7EC8E3;border-radius:99px;padding:1px 6px;font-size:10px;margin-left:2px">0</span></button>
   <button class="tab-btn" data-tab="gaps" onclick="showTab('gaps')">🔲 Gaps <span id="gaps-badge" style="display:none;background:#4C1D95;color:#C4B5FD;border-radius:99px;padding:1px 6px;font-size:10px;margin-left:2px">0</span></button>
+  <button class="tab-btn" data-tab="history" onclick="showTab('history')">📝 History</button>
+</div>
+
+<!-- ══════════ DASHBOARD VIEW ══════════ -->
+<div id="dashboard-view" class="view active" style="overflow-y:auto;flex-direction:column;padding:20px;">
+  <div id="dashboard-content" style="max-width:1100px;width:100%;margin:0 auto;">
+    <div style="color:#2A3A50;font-size:12px;padding:40px 0;text-align:center;">Loading dashboard…</div>
+  </div>
 </div>
 
 <!-- ══════════ SESSIONS VIEW ══════════ -->
@@ -382,8 +391,12 @@
 <div id="gaps-view" class="view" style="overflow:hidden;">
   <div class="v-sidebar">
     <div style="padding:10px 12px;border-bottom:1px solid #0F2040;flex-shrink:0;">
-      <div style="font-size:12px;font-weight:600;color:#CBD5E1;margin-bottom:3px;">🔲 Validation Worklist</div>
-      <div style="font-size:10px;color:#3A5A70;margin-bottom:8px;line-height:1.4;">Open questions from the corpus awaiting field validation. Resolve as partner data comes in.</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <div style="font-size:12px;font-weight:600;color:#CBD5E1;">🔲 Validation Worklist</div>
+        <span id="gaps-starred-count" style="display:none;background:#2D1B00;border:1px solid #78350F;color:#D4A017;border-radius:4px;padding:1px 7px;font-size:10px;">★ 0</span>
+      </div>
+      <div style="font-size:10px;color:#3A5A70;margin-bottom:8px;line-height:1.4;">Star gaps to prioritize them, then send starred to your field partner in one click.</div>
+      <button id="gaps-send-starred-btn" onclick="sendStarredToPartner()" style="display:none;width:100%;background:#2D1B00;border:1px solid #D4A017;border-radius:6px;color:#D4A017;padding:7px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:8px;">★ Send starred to partner ↗</button>
       <div style="display:flex;flex-direction:column;gap:5px;">
         <select id="gaps-filter-status" onchange="loadGaps()" style="width:100%;background:#040710;border:1px solid #0F2040;border-radius:5px;color:#94A3B8;padding:5px 8px;font-size:11.5px;font-family:inherit;">
           <option value="open">Open</option>
@@ -405,6 +418,21 @@
       <p style="margin-bottom:10px;">When your Haiti partner returns with an answer, find the gap, click <span style="color:#34D399;">✓ Resolved</span>, and note how it was validated. The knowledge then goes into the corpus as a confirmed entry.</p>
       <p>Gaps that turn out not to matter can be dismissed. This keeps the list focused on what actually needs field work.</p>
     </div>
+  </div>
+</div>
+
+<!-- ══════════ HISTORY VIEW ══════════ -->
+<div id="history-view" class="view" style="overflow:hidden;">
+  <div class="v-sidebar">
+    <div style="padding:10px 12px;border-bottom:1px solid #0F2040;flex-shrink:0;">
+      <div style="font-size:12px;font-weight:600;color:#CBD5E1;margin-bottom:3px;">📝 Corpus History</div>
+      <div style="font-size:10px;color:#3A5A70;line-height:1.4;">Session summaries and changelogs — how the corpus grew over time. Not cultural content, never used by personas.</div>
+      <button class="btn" onclick="reclassifyLogs()" style="width:100%;margin-top:8px;font-size:10.5px;color:#D4A017;border-color:#3A2E00;">↻ Pull session summaries out of corpus</button>
+    </div>
+    <div id="history-list" style="flex:1;overflow-y:auto;padding:6px;"></div>
+  </div>
+  <div class="v-detail" id="history-detail">
+    <div style="color:#2A3A50;font-size:12px;padding-top:40px;text-align:center;">Select a session summary to read</div>
   </div>
 </div>
 
